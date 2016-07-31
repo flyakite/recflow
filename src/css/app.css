@@ -1,0 +1,15 @@
+body {
+  position: relative;
+}
+.project-container {
+  position: absolute;
+  left: 0;
+  width: 511px;
+  border-right: 1px solid #eee;
+  padding: 20px 10px;
+}
+.testcase-container {
+  margin-left: 512px;
+  width: 512px;
+  padding: 20px 10px;
+}

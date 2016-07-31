@@ -1,0 +1,28 @@
+{
+  "name": "recflow",
+  "version": "0.1.0",
+  "description": "A Desktop App for Mobile UI testing",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "electron ./src",
+    "dist": "gulp electron"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyakite/recflow.git"
+  },
+  "keywords": [
+    "electron",
+    "recflow"
+  ],
+  "author": "Shih Wen Su <sushi@summeridea.com>",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/flyakite/recflow/issues"
+  },
+  "homepage": "http://recflow.com",
+  "devDependencies": {
+    "gulp": "^3.9.0",
+    "gulp-electron": "0.0.9"
+  }
+}

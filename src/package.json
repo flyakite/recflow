@@ -1,0 +1,24 @@
+{
+  "name": "recflow",
+  "version": "0.1.0",
+  "description": "A Desktop App for Mobile UI testing",
+  "main": "app.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/flyakite/recflow.git"
+  },
+  "keywords": [
+    "electron",
+    "recflow"
+  ],
+  "author": "Shih Wen Su <sushi@summeridea.com>",
+  "license": "UNLICENSED",
+  "bugs": {
+    "url": "https://github.com/flyakite/recflow/issues"
+  },
+  "homepage": "http://recflow.com",
+  "dependencies": {
+    "lokijs": "^1.3.9",
+    "uuid": "^2.0.1"
+  }
+}

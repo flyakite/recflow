@@ -1,0 +1,23 @@
+{
+  "name": "toptal-electron-loki-demo",
+  "version": "1.0.1",
+  "homepage": "http://recflow.com",
+  "authors": [
+    "Shih Wen Su <sushi@summeridea.com>"
+  ],
+  "keywords": [
+    "electron",
+    "recflow"
+  ],
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "angular": "~1.4.5",
+    "material-design-lite": "~1.0.4"
+  }
+}
