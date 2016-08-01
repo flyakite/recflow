@@ -1,4 +1,4 @@
-body {
+/*body {
   position: relative;
 }
 .project-container {
@@ -12,4 +12,8 @@ body {
   margin-left: 512px;
   width: 512px;
   padding: 20px 10px;
+}*/
+
+.top-nav-bar{
+  margin-bottom: 10px;
 }

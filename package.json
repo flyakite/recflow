@@ -24,5 +24,8 @@
   "devDependencies": {
     "gulp": "^3.9.0",
     "gulp-electron": "0.0.9"
+  },
+  "dependencies": {
+    "adbkit": "^2.4.1"
   }
 }

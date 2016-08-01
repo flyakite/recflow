@@ -4,6 +4,8 @@ const {ipcRenderer, clipboard} = require('electron'),
   uuid = require('uuid'),
   loki = require('lokijs'),
   path = require('path');
+const childProcess = require('child_process');
+const adb = require('adbkit');
 
 angular
   .module('Utils', [])
@@ -108,6 +110,34 @@ angular
     this.getAll = function() {
       return (this.getCollection()) ? this.getCollection().data : null;
     };
+  }])
+  .service('adb', ['$q', '$timeout', function($q, $timeout) {
+    this.client = adb.createClient();
+    this.init = function(serial) {
+      this.serial = serial;
+    };
+    this.getEvent = function(callback) {
+      const recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
+      recordingProcess.stdout.on('data', callback);
+    };
+    this.takeScreenshot = function(path, callback) {
+      this.client.screencap(this.serial, function(err, screencapstream) {
+        const stream = fs.createWriteStream(path);
+        stream.on('finish', callback);
+        stream.write(screencapstream);
+        stream.end();
+      });
+      // const screeshotProcess = childProcess.execFile('adb', ['shell', 'screencap', '-p']);
+      // const stream = fs.createWriteStream(path);
+      // stream.on('finish', callback);
+      // screeshotProcess.stdout.on('data', function(data) {
+      //   stream.write(data.replace(/\x0D\x0A/g,'\x0A'));
+      // });
+      // $timeout(function() {
+      //   stream.end();
+      // }, 3000);
+    };
+    return this;
   }])
   .service('TouchRawEventHelper', ['$q', function($q) {
     this.state = 'none';

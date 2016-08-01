@@ -11,14 +11,37 @@
 <body>
 
   <div class="">
-    <div ng-controller="MainCtrl as vm" class="ng-cloak">
-      <div class="project-container">
+    <div ng-controller="MainCtrl as vm" class="row ng-cloak">
+      
+      <div class="top-nav-bar">
+        <ul id="dropdown1" class="dropdown-content">
+          <li ng-repeat="device in vm.devices">
+            <a href 
+              ng-class="{'active':device.id == vm.currentDeviceID}"
+              ng-click="vm.selectDevice(device.id)">{{device.id}}</a>
+          </li>
+        </ul>
+        <nav>
+          <div class="nav-wrapper">
+            <ul class="hide-on-med-and-down">
+              <li>
+                <a class="dropdown-button" href="#!" data-activates="dropdown1">
+                  Devices {{vm.currentDeviceID}}
+                  <i class="fa fa-chevron-down right"></i>
+                </a>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </div>
+
+      <div class="project-container col s6">
         <a href class="btn waves-effect waves-light red diabled" ng-click="vm.record()" ng-if="!vm.state.recording">
           <i class="left fa fa-circle"></i>
           <font class="">Record</font>
         </a>
 
-        <a href class="btn waves-effect waves-light red diabled" ng-click="vm.stop()" ng-if="vm.state.recording">
+        <a href class="btn waves-effect waves-light red diabled ng-cloak" ng-click="vm.stop()" ng-if="vm.state.recording">
           <i class="left fa fa-square"></i>
           <font class="">Stop</font>
         </a>
@@ -34,11 +57,8 @@
         </div>
       </div><!-- project-container -->
       
-      <div class="testcase-container">
+      <div class="testcase-container  col s6">
         <ul class="collection">
-          <li class="collection-item">
-            first
-          </li>
           <li class="collection-item" ng-repeat="ce in vm.cookedEvents track by $index">
             {{ce}}
           </li>
