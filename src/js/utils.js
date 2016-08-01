@@ -21,7 +21,7 @@ angular
     this.loaded = false;
 
     this.init = function(collectionName) {
-      var d = $q.defer();
+      let d = $q.defer();
       this.collectionName = collectionName;
       this.reload()
         .then(()=> {
@@ -45,7 +45,7 @@ angular
     };
 
     this.reload = function() {
-      var d = $q.defer();
+      let d = $q.defer();
 
       this.loaded = false;
 
@@ -71,7 +71,7 @@ angular
     };
 
     this.add = function(data) {
-      var d = $q.defer();
+      let d = $q.defer();
 
       if(this.isLoaded() && this.getCollection()) {
         this.getCollection().insert(data);
@@ -87,7 +87,7 @@ angular
 
     this.remove = function(doc) {
       return function() {
-        var d = $q.defer();
+        let d = $q.defer();
 
         if(this.isLoaded() && this.getCollection()) {
           this.getCollection().remove(doc);
@@ -108,4 +108,130 @@ angular
     this.getAll = function() {
       return (this.getCollection()) ? this.getCollection().data : null;
     };
-  }]);
+  }])
+  .service('TouchRawEventHelper', ['$q', function($q) {
+    this.state = 'none';
+    this.touchNumber = 0;
+    this.buffer = [];
+    this.touchCoordinates = {};
+    this.currentSlot = 0;
+    this.receiveChoppedEvent = function(e, callback) {
+      /**
+       * a event looks like
+       * {
+       *   type: 'EV_SYN',
+       *   code: 'SYN_REPORT',
+       *   value: '00000000',
+       *   input: 'event2',
+       *   time: '57988.493168'
+       * }
+       */
+      switch(this.state) {
+
+        default:
+          //case 'none':
+          switch(e.type) {
+            case 'EV_KEY':
+              switch(e.code){
+                case 'KEY_POWER':
+                  if(e.value == 'DOWN'){
+                    this.state = 'power_button_down';
+                    callback({state:this.state});
+                  }else if(e.value == 'UP'){
+                    this.state = 'power_button_up';
+                    callback({state:this.state});
+                  }
+                  break;
+                default:
+                  console.log(e.code);
+              }
+              break;
+            case 'EV_ABS':
+              switch(e.code){
+                case 'ABS_MT_TRACKING_ID':
+                  if(e.value == 'ffffffff'){
+                    this.touchNumber--;
+                    if(this.touchNumber === 0){
+                      this.state = 'touch_finished';
+                      callback({
+                        state:this.state, 
+                        touchNumber:this.touchNumber,
+                        touchCoordinates:this.touchCoordinates
+                      });
+                      this.touchCoordinates = {};
+                    }else{
+                      this.state = 'touch_up';
+                      callback({state:this.state, touchNumber:this.touchNumber});  
+                    }
+                  }else{
+                    //new touch
+                    this.state = 'touch_down';
+                    this.touchNumber++;
+                    callback({state:this.state, touchNumber:this.touchNumber});
+                  }
+                  break;
+                case 'ABS_MT_SLOT':
+                  this.currentSlot = parseInt(e.value);
+                  break;
+                case 'ABS_MT_POSITION_X':
+                  if(typeof this.touchCoordinates[this.currentSlot] === 'undefined'){
+                    this.touchCoordinates[this.currentSlot] = [];
+                  }
+                  this.touchCoordinates[this.currentSlot].push({x:parseInt(e.value, 16),t:e.time});
+                  break;
+                case 'ABS_MT_POSITION_Y':
+                  let coor = this.touchCoordinates[this.currentSlot];
+                  coor[coor.length-1]['y'] = parseInt(e.value, 16);
+                  break;
+                default:
+                  // console.log(e.code);
+              }
+              break;
+            case 'EV_SYN':
+              switch(e.code){
+                case 'SYN_REPORT':
+                  if(['power_button_up', 'touch_finished'].indexOf(this.state) !== -1){
+                    this.state = 'none';
+                  }
+                  break;
+                default:
+                  console.log(e.code);
+              }
+              break;
+            default:
+              console.log(e.type);
+          }
+      }
+      return this;
+    };//receive
+
+    this.eventRawEventRegex = /\s*?\[\s*?(\d+\.\d+)\s*?\]\s*?\/dev\/input\/(event\d+)\:\s+?(EV_\w+)\s+?(\w+)\s+?(\w+)\s*/;
+    this.chopRawEvents = function(event_string, callback) {
+      /**
+       * a event looks like
+       * {
+       *   type: 'EV_SYN',
+       *   code: 'SYN_REPORT',
+       *   value: '00000000',
+       *   input: 'event2',
+       *   time: '57988.493168'
+       * }
+       */
+      let match, events = event_string.split('\n');
+      for(var i=0; i<events.length; i++){
+        match = this.eventRawEventRegex.exec(events[i]);
+        if(match && match.length > 0){
+          callback({
+            time: parseFloat(match[1]),
+            input: match[2],
+            type: match[3],
+            code: match[4],
+            value: match[5]
+          });
+        }
+      }
+      return this;
+    };
+
+  }])
+;

@@ -13,9 +13,14 @@
   <div class="">
     <div ng-controller="MainCtrl as vm" class="ng-cloak">
       <div class="project-container">
-        <a href class="btn waves-effect waves-light red diabled">
+        <a href class="btn waves-effect waves-light red diabled" ng-click="vm.record()" ng-if="!vm.state.recording">
           <i class="left fa fa-circle"></i>
           <font class="">Record</font>
+        </a>
+
+        <a href class="btn waves-effect waves-light red diabled" ng-click="vm.stop()" ng-if="vm.state.recording">
+          <i class="left fa fa-square"></i>
+          <font class="">Stop</font>
         </a>
 
         <a href class="btn waves-effect waves-light disabled">
@@ -24,10 +29,20 @@
         </a>
 
         <div class="progress">
-          <div class="determinate red" style="width: 0%"></div>
+          <div class="determinate red" style="width: 0%" ng-if="!vm.state.recording"></div>
+          <div class="indeterminate red" ng-if="vm.state.recording"></div>
         </div>
       </div><!-- project-container -->
+      
       <div class="testcase-container">
+        <ul class="collection">
+          <li class="collection-item">
+            first
+          </li>
+          <li class="collection-item" ng-repeat="ce in vm.cookedEvents track by $index">
+            {{ce}}
+          </li>
+        </ul>
       </div><!-- testcase-container -->
     </div>
   </div>
