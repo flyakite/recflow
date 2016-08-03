@@ -11,13 +11,13 @@ angular
   .module('Utils', [])
   .factory('Generator', function() {
     return {
-      create: function() {
+      uuid4: function() {
         return uuid.v4();
       }
     };
   })
   .service('Storage', ['$q', function($q) {
-    this.db = new loki(path.resolve(__dirname, '../..', 'app.db'));
+    this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));
     this.collection = null;
     this.collectionName = null;
     this.loaded = false;
@@ -113,39 +113,33 @@ angular
   }])
   .service('adb', ['$q', '$timeout', function($q, $timeout) {
     this.client = adb.createClient();
-    this.init = function(serial) {
-      this.serial = serial;
+    this.init = function(deviceID) {
+      this.deviceID = deviceID;
     };
     this.getEvent = function(callback) {
       const recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
       recordingProcess.stdout.on('data', callback);
     };
-    this.takeScreenshot = function(path, callback) {
-      this.client.screencap(this.serial, function(err, screencapstream) {
-        const stream = fs.createWriteStream(path);
-        stream.on('finish', callback);
-        stream.write(screencapstream);
-        stream.end();
-      });
-      // const screeshotProcess = childProcess.execFile('adb', ['shell', 'screencap', '-p']);
-      // const stream = fs.createWriteStream(path);
+    this.takeScreenshot = function(savePath, callback) {
+      console.log(this.deviceID, savePath);
+      const stream = fs.createWriteStream(savePath);
       // stream.on('finish', callback);
-      // screeshotProcess.stdout.on('data', function(data) {
-      //   stream.write(data.replace(/\x0D\x0A/g,'\x0A'));
-      // });
-      // $timeout(function() {
-      //   stream.end();
-      // }, 3000);
+      this.client.screencap(this.deviceID).then(function(screencapStream) {
+        // err && console.error(err);
+        screencapStream.pipe(stream);
+        screencapStream.on('end', callback);
+      });
     };
     return this;
   }])
-  .service('TouchRawEventHelper', ['$q', function($q) {
+  .service('DeviceEventHelper', ['$q', function($q) {
     this.state = 'none';
     this.touchNumber = 0;
     this.buffer = [];
     this.touchCoordinates = {};
     this.currentSlot = 0;
-    this.receiveChoppedEvent = function(e, callback) {
+    this.eventsPack = [];
+    this.handleChoppedEvent = function(e, callback) {
       /**
        * a event looks like
        * {
@@ -156,6 +150,7 @@ angular
        *   time: '57988.493168'
        * }
        */
+      this.eventsPack.push(e);
       switch(this.state) {
 
         default:
@@ -172,6 +167,8 @@ angular
                     callback({state:this.state});
                   }
                   break;
+                case 'BTN_TOUCH':
+                  break;
                 default:
                   console.log(e.code);
               }
@@ -179,13 +176,22 @@ angular
             case 'EV_ABS':
               switch(e.code){
                 case 'ABS_MT_TRACKING_ID':
-                  if(e.value == 'ffffffff'){
+                  if(e.value !== 'ffffffff'){
+                    //new touch
+                    if(this.touchNumber === 0){
+                      this.state = 'touch_first';
+                      callback({state:this.state});  
+                    }else{
+                      this.state = 'touch_multi';
+                      this.touchNumber++;
+                      callback({state:this.state, touchNumber:this.touchNumber});
+                    }
+                  }else{
                     this.touchNumber--;
                     if(this.touchNumber === 0){
                       this.state = 'touch_finished';
                       callback({
                         state:this.state, 
-                        touchNumber:this.touchNumber,
                         touchCoordinates:this.touchCoordinates
                       });
                       this.touchCoordinates = {};
@@ -193,11 +199,6 @@ angular
                       this.state = 'touch_up';
                       callback({state:this.state, touchNumber:this.touchNumber});  
                     }
-                  }else{
-                    //new touch
-                    this.state = 'touch_down';
-                    this.touchNumber++;
-                    callback({state:this.state, touchNumber:this.touchNumber});
                   }
                   break;
                 case 'ABS_MT_SLOT':
@@ -222,6 +223,7 @@ angular
                 case 'SYN_REPORT':
                   if(['power_button_up', 'touch_finished'].indexOf(this.state) !== -1){
                     this.state = 'none';
+                    callback({state:this.state, eventsPack:this.eventsPack});
                   }
                   break;
                 default:
@@ -258,10 +260,40 @@ angular
             code: match[4],
             value: match[5]
           });
+        }else{
+          console.error('Raw event does not match the pattern.', events[i]);
         }
       }
       return this;
     };
 
+  }])
+  .service('TestCaseSaver', ['$q', function($q) {
+
+    this.init = function(testCaseID) {
+      //create json file in userData
+      this.testCaseID = testCaseID;
+      this.testCasePath = path.resolve(app.getPath('userData'), 'TestCase', this.testCaseID);
+
+    };
+
+    this.save = function() {
+      /**
+       *  save intergrated events to userData in json format
+       *  {
+       *    screenSize: {},
+       *    rawEvents: [],
+       *    steps:[{
+       *        waitInit:, //milisecond
+       *        eventsPack: [],
+       *        tdScreen : '', //touch down screen file name
+       *        tdCo: {x:,y:}, //touch down Coordinates
+       *      },
+       *    ]
+       *    
+       *  }
+       * 
+       */
+    };
   }])
 ;
