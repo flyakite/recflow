@@ -18,7 +18,6 @@ angular
   // }])
   .filter('cssClip', [function(){
     return function(val) {
-        console.log(val);
       if(val && typeof val.margin !== 'undefined'){
         const m = val.margin;
         return `margin-top:-${m.top}px;margin-left:-${m.left}px;

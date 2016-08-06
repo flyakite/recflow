@@ -88,12 +88,31 @@ angular
     };
 
     vm.stop = function() {
+      //add final step
+      vm.testCase.steps.push({
+        name: 'End',
+        clip: ScreenDisplayHelper.fullDisplay(vm.device, TOUCH_WIDTH)
+      });
+      vm.takeScreenShot({stepIndex:vm.testCase.steps.length-1});
       vm.state.recording = false;
       recordingProcess && recordingProcess.kill();
       console.log(vm.recordingID);
       console.log(vm.testCase);
     };
 
+    vm.takeScreenShot = function(option) {
+      const screenshotFilename = Generator.uuid4() + '.png';
+      const testcasePath = path.resolve(app.getPath('userData'), 'Testcases', vm.recordingID);
+      const screenshotFilePath = path.resolve(testcasePath, screenshotFilename);
+      (function(stepIndex, screenshotFilePath){
+        adb.takeScreenshot(screenshotFilePath, function() {
+            console.log('update screenshot for step ', stepIndex);
+            vm.testCase.steps[stepIndex].touchDownScreen = screenshotFilename;
+            vm.testCase.steps[stepIndex].displayScreen = `file://${screenshotFilePath}`;
+            $scope.$apply();
+        });
+      })(option.stepIndex, screenshotFilePath);
+    };
 
     vm.recordDeviceEvents = function() {
       let stepIndex = 0;
@@ -113,28 +132,14 @@ angular
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
                   break;
                 case 'power_button_up':
-                  console.log('power up');
                   vm.testCase.steps[stepIndex].name = 'Power Pressed';
                   break;
                 case 'touch_first':
-                  console.log('touch first');
-                  const screenshotFilename = Generator.uuid4() + '.png';
-                  const testcasePath = path.resolve(app.getPath('userData'), 'Testcases', vm.recordingID);
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
-                  console.log('currentIndex ', stepIndex);
-                  // console.log('testcasePath ', testcasePath);
-                  const screenshotFilePath = path.resolve(testcasePath, screenshotFilename);
-                  (function(stepIndex, screenshotFilePath){
-                    adb.takeScreenshot(screenshotFilePath, function() {
-                        console.log('update screenshot for step ', stepIndex);
-                        vm.testCase.steps[stepIndex].touchDownScreen = screenshotFilename;
-                        vm.testCase.steps[stepIndex].displayScreen = `file://${screenshotFilePath}`;
-                        $scope.$apply();
-                    });
-                  })(stepIndex, screenshotFilePath);
+                  vm.takeScreenShot({stepIndex:stepIndex});
                   break;
                 case 'touch_finished':
-                  console.log('touch finished', es.touchCoordinates);
+                  console.log('touch_finished touchCoordinates', es.touchCoordinates);
                   if(Object.keys(es.touchCoordinates).length > 1){
                     vm.testCase.steps[stepIndex].name = 'Multi-Touch';
                     vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
@@ -150,17 +155,17 @@ angular
 
                   }else if(es.touchCoordinates[FIRST_TOUCH] && (es.duration) > 1 ){
 
-                    vm.testCase.steps[stepIndex].displayArea = {
-                      x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                      y:es.touchCoordinates[FIRST_TOUCH][0].y
-                    };
+                    // vm.testCase.steps[stepIndex].displayArea = {
+                    //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
+                    //   y:es.touchCoordinates[FIRST_TOUCH][0].y
+                    // };
                     vm.testCase.steps[stepIndex].name = 'Long Press';
                     vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
                   }else{
-                    vm.testCase.steps[stepIndex].displayArea = {
-                      x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                      y:es.touchCoordinates[FIRST_TOUCH][0].y
-                    };
+                    // vm.testCase.steps[stepIndex].displayArea = {
+                    //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
+                    //   y:es.touchCoordinates[FIRST_TOUCH][0].y
+                    // };
                     vm.testCase.steps[stepIndex].name = 'Touch';
                     vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
                     

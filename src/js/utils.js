@@ -436,5 +436,13 @@ angular
         height: device.displayScreenSize.Y / (SCREEN_SCALE*AMPLIF)
       };
     };
+    this.fullDisplay = function(device, touch_width) {
+      return {
+        margin:{
+          top:0, left:0
+        },
+        height: touch_width
+      }
+    };
   }])
 ;
