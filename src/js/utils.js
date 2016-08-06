@@ -113,15 +113,47 @@ angular
   }])
   .service('adb', ['$q', '$timeout', function($q, $timeout) {
     this.client = adb.createClient();
+
     this.init = function(deviceID) {
+      const d1 = $q.defer(), d2 = $q.defer();
       this.deviceID = deviceID;
+      this.client.shell(deviceID, 'getevent -p')
+        .then(adb.util.readAll)
+        .then((result)=> {
+          let touchScreenSize = {};
+          const deviceInfo = result.toString();
+          let match = /\s*0035\s+.*min\s+(\d+).*max\s+(\d+).*/.exec(deviceInfo);
+          if(match){
+            touchScreenSize.minX = match[1];
+            touchScreenSize.maxX = match[2];
+          }
+          match = /\s*0036\s+.*min\s+(\d+).*max\s+(\d+).*/.exec(deviceInfo);
+          if(match){
+            touchScreenSize.minY = match[1];
+            touchScreenSize.maxY = match[2];
+          }
+          d1.resolve(touchScreenSize);
+        });
+      this.client.shell(deviceID, 'dumpsys window | grep "mUnrestrictedScreen"')
+        .then(adb.util.readAll)
+        .then((result)=> {
+          let displayScreenSize = {};
+          const mUnrestrictedScreen = result.toString();
+          const match = /.*\s+(\d+)x(\d+)/.exec(mUnrestrictedScreen);
+          if(match){
+            displayScreenSize.X = match[1];
+            displayScreenSize.Y = match[2];
+          }
+          d2.resolve(displayScreenSize);
+        })
+      return $q.all([d1.promise, d2.promise]);
     };
     this.getEvent = function(callback) {
       const recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
       recordingProcess.stdout.on('data', callback);
     };
     this.takeScreenshot = function(savePath, callback) {
-      console.log(this.deviceID, savePath);
+      // console.log(this.deviceID, savePath);
       const stream = fs.createWriteStream(savePath);
       // stream.on('finish', callback);
       this.client.screencap(this.deviceID).then(function(screencapStream) {
@@ -139,6 +171,7 @@ angular
     this.touchCoordinates = {};
     this.currentSlot = 0;
     this.eventsPack = [];
+    this.touchDuration = [];
     this.handleChoppedEvent = function(e, callback) {
       /**
        * a event looks like
@@ -176,28 +209,53 @@ angular
             case 'EV_ABS':
               switch(e.code){
                 case 'ABS_MT_TRACKING_ID':
+                  console.log('touchNumber', this.touchNumber);
                   if(e.value !== 'ffffffff'){
                     //new touch
+                    this.touchDuration[this.touchNumber] = {start:e.time};
                     if(this.touchNumber === 0){
                       this.state = 'touch_first';
-                      callback({state:this.state});  
+                      this.touchNumber++;
+                      callback({
+                        state:this.state, 
+                        time:e.time
+                      });
                     }else{
                       this.state = 'touch_multi';
                       this.touchNumber++;
-                      callback({state:this.state, touchNumber:this.touchNumber});
-                    }
-                  }else{
-                    this.touchNumber--;
-                    if(this.touchNumber === 0){
-                      this.state = 'touch_finished';
                       callback({
                         state:this.state, 
-                        touchCoordinates:this.touchCoordinates
+                        touchNumber:this.touchNumber, 
+                        time:e.time
+                      });
+                    }
+                  }else{
+                    //end of tracking a touch
+                    this.touchNumber--;
+                    this.touchDuration[this.touchNumber] = this.touchDuration[this.touchNumber] || {};
+                    let duration = this.touchDuration[this.touchNumber];
+                    duration.end = e.time;
+                    if(duration.start){
+                      duration.duration = duration.end - duration.start;
+                    }
+                    if(this.touchNumber === 0){
+                      this.state = 'touch_finished';
+                      console.log(this.touchDuration[this.touchNumber]);
+                      callback({
+                        state:this.state, 
+                        touchCoordinates:this.touchCoordinates, 
+                        time:e.time,
+                        duration: duration.duration
                       });
                       this.touchCoordinates = {};
                     }else{
                       this.state = 'touch_up';
-                      callback({state:this.state, touchNumber:this.touchNumber});  
+                      callback({
+                        state:this.state,
+                        touchNumber:this.touchNumber, 
+                        time:e.time,
+                        duration: duration.duration
+                      });  
                     }
                   }
                   break;
@@ -212,7 +270,7 @@ angular
                   break;
                 case 'ABS_MT_POSITION_Y':
                   let coor = this.touchCoordinates[this.currentSlot];
-                  coor[coor.length-1]['y'] = parseInt(e.value, 16);
+                  coor[coor.length-1].y = parseInt(e.value, 16);
                   break;
                 default:
                   // console.log(e.code);
@@ -222,6 +280,7 @@ angular
               switch(e.code){
                 case 'SYN_REPORT':
                   if(['power_button_up', 'touch_finished'].indexOf(this.state) !== -1){
+                    // console.log('return to none state');
                     this.state = 'none';
                     callback({state:this.state, eventsPack:this.eventsPack});
                   }
@@ -258,10 +317,14 @@ angular
             input: match[2],
             type: match[3],
             code: match[4],
-            value: match[5]
+            value: match[5],
+            raw: events[i].trim()
           });
         }else{
-          console.error('Raw event does not match the pattern.', events[i]);
+          callback({
+            error: true,
+            raw: events[i].trim()
+          });
         }
       }
       return this;
@@ -286,14 +349,92 @@ angular
        *    steps:[{
        *        waitInit:, //milisecond
        *        eventsPack: [],
-       *        tdScreen : '', //touch down screen file name
-       *        tdCo: {x:,y:}, //touch down Coordinates
+       *        touchDownScreen : '', //touch down screen file name
+       *        displayArea: {x:,y:,w:,h}, //step display Coordinates
+       *        //tdCo: {x:,y:}, //touch down Coordinates
        *      },
        *    ]
        *    
        *  }
        * 
        */
+      fs.writeFile(obj.strinify(), path.resolve(this.testCasePath, 'steps'));
+    };
+  }])
+  .service('ScreenDisplayHelper', [function() {
+    const FIRST_TOUCH = 0;
+    const SCREEN_SCALE = 4;
+    this.touchDisplay = function(device, coordinates, touch_width) {
+      /**
+       * return display object for css clip
+       * {
+       *   rect:{
+       *     top:
+       *     right:
+       *     bottom:
+       *     left:
+       *   }
+       * }
+       */
+      const x = (coordinates[FIRST_TOUCH][0].x - device.touchScreenSize.minX) * 
+        device.displayScreenSize.X / (device.touchScreenSize.maxX - device.touchScreenSize.minX + 1);
+      const y = (coordinates[FIRST_TOUCH][0].y - device.touchScreenSize.minY) * 
+        device.displayScreenSize.Y / (device.touchScreenSize.maxY - device.touchScreenSize.minY + 1);
+      return {
+        margin:{
+          top: (y - touch_width*SCREEN_SCALE/2)/SCREEN_SCALE,
+          left: (x - touch_width*SCREEN_SCALE/2)/SCREEN_SCALE,
+        },
+        width: device.displayScreenSize.X / SCREEN_SCALE,
+        height: device.displayScreenSize.Y / SCREEN_SCALE
+      };
+    };
+    this.swipeDisplay = function(device, coordinates, touch_width) {
+      //TODO: draw the track
+      const x = (coordinates[FIRST_TOUCH][0].x - device.touchScreenSize.minX) * 
+        device.displayScreenSize.X / (device.touchScreenSize.maxX - device.touchScreenSize.minX + 1);
+      const y = (coordinates[FIRST_TOUCH][0].y - device.touchScreenSize.minY) * 
+        device.displayScreenSize.Y / (device.touchScreenSize.maxY - device.touchScreenSize.minY + 1);
+      return {
+        margin:{
+          top: (y - touch_width*SCREEN_SCALE/2)/SCREEN_SCALE,
+          left: (x - touch_width*SCREEN_SCALE/2)/SCREEN_SCALE,
+        },
+        width: device.displayScreenSize.X / SCREEN_SCALE,
+        height: device.displayScreenSize.Y / SCREEN_SCALE
+      };
+    };
+    this.multiTouchDisplay = function(device, coordinates, touch_width) {
+      //TODO: draw the track
+      const AMPLIF = 4;
+      let top, right, bottom, left;
+      for(let i=0;i<Object.keys(coordinates).length;i++){
+        if(!top || coordinates[i][0].y < top){
+          top = coordinates[i][0].y;
+        }
+        if(!right || coordinates[i][0].x > right){
+          right = coordinates[i][0].x;
+        }
+        if(!bottom || coordinates[i][0].y > bottom){
+          bottom = coordinates[i][0].y;
+        }
+        if(!left || coordinates[i][0].x < left){
+          left = coordinates[i][0].x;
+        }
+      }
+      console.log(top,right,bottom,left);
+      const x = (left + (right-left)/2 - device.touchScreenSize.minX) * 
+        device.displayScreenSize.X / (device.touchScreenSize.maxX - device.touchScreenSize.minX + 1);
+      const y = (top + (bottom-top)/2 - device.touchScreenSize.minY) * 
+        device.displayScreenSize.Y / (device.touchScreenSize.maxY - device.touchScreenSize.minY + 1);
+      return {
+        margin:{
+          top: (y - touch_width*(SCREEN_SCALE*AMPLIF)/2)/(SCREEN_SCALE*AMPLIF),
+          left: (x - touch_width*(SCREEN_SCALE*AMPLIF)/2)/(SCREEN_SCALE*AMPLIF),
+        },
+        width: device.displayScreenSize.X / (SCREEN_SCALE*AMPLIF),
+        height: device.displayScreenSize.Y / (SCREEN_SCALE*AMPLIF)
+      };
     };
   }])
 ;

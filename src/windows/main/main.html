@@ -25,7 +25,7 @@
           <div class="nav-wrapper">
             <ul class="hide-on-med-and-down">
               <li>
-                <a class="dropdown-button" href="#!" data-activates="dropdown1">
+                <a class="dropdown-button" href data-activates="dropdown1">
                   Devices {{vm.currentDeviceID}}
                   <i class="fa fa-chevron-down right"></i>
                 </a>
@@ -58,9 +58,14 @@
       </div><!-- project-container -->
       
       <div class="testcase-container  col s6">
-        <ul class="collection">
-          <li class="collection-item" ng-repeat="ce in vm.cookedEvents track by $index">
-            {{ce}}
+        <ul class="collection testcase-steps">
+          <li class="collection-item" ng-repeat="step in vm.testCase.steps track by $index">
+            {{step.name}}
+            <div class="display-screen-crop">
+              <img ng-src="{{step.displayScreen}}" alt="screen" class="display-screen"
+                style="{{step.clip|cssClip}}"
+                ng-if="step.displayScreen">
+            </div>
           </li>
         </ul>
       </div><!-- testcase-container -->
@@ -74,6 +79,7 @@
   <script>require('./main.controller.js');</script>
   
   <script src="../../js/utils.js"></script>
+  <script src="../../js/filters.js"></script>
   <script src="./main.view.js"></script>
   <script>
     angular
