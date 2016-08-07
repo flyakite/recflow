@@ -55,11 +55,31 @@
           <div class="determinate red" style="width: 0%" ng-if="!vm.state.recording"></div>
           <div class="indeterminate red" ng-if="vm.state.recording"></div>
         </div>
+        <div>
+          <ul class="testcase-list collection">
+            <li class="collection-item"
+              ng-repeat="tc in vm.projectSettings.testCases"
+            >
+              <a href class="show-testcase-steps"
+                ng-click="vm.showTestCaseSteps(tc.id)"
+                >
+                {{tc.name}}
+              </a>
+              <a href class="display-testcase secondary-content"
+                ng-click="vm.playbackTestCase(tc.id)"
+                >
+                <i class="fa fa-play"></i>
+                Play
+              </a>
+            </li>
+          </ul>
+        </div>
       </div><!-- project-container -->
       
-      <div class="testcase-container  col s6">
+      <div class="testcase-container col s6">
         <ul class="collection testcase-steps">
-          <li class="collection-item" ng-repeat="step in vm.testCase.steps track by $index">
+          <li class="collection-item" 
+            ng-repeat="step in vm.testCase.steps track by $index">
             {{step.name}}
             <div class="display-screen-crop">
               <img ng-src="{{step.displayScreen}}" alt="screen" class="display-screen"
@@ -69,6 +89,34 @@
           </li>
         </ul>
       </div><!-- testcase-container -->
+      <!--a class="btn modal-trigger" href="#save-testcase">Modal</a-->
+
+      <!-- modal -->
+      <div id="save-testcase" class="modal">
+        <div class="modal-content">
+          <h4>Save Test Case</h4>
+          <p>
+            <div class="row">
+              <div class="input-field col s6">
+                <input id="testcase-name" type="text" class="validate" 
+                  ng-model="vm.testCaseName">
+                <label for="testcase-name">Name</label>
+              </div>
+            </div>
+          </p>
+        </div>
+        <div class="modal-footer">
+          <a href class="modal-action modal-close btn-flat"
+            ng-click="vm.saveTestCase()"
+            >
+            Save
+          </a>
+          <a href class="modal-action modal-close btn-flat"
+            ng-click="vm.cancelTestCase()">
+            Cancel
+          </a>
+        </div>
+      </div>
     </div>
   </div>
   <script src="../../node_modules/jquery/dist/jquery.min.js"></script>
@@ -87,6 +135,9 @@
       .ready(function() {
         angular.bootstrap(document.body, ['MainView']);
       });
+    $(document).ready(function(){
+      $('.modal-trigger').leanModal();
+    })
   </script>
 </body>
 </html>

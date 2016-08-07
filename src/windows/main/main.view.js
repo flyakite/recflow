@@ -3,18 +3,34 @@
 const fs = require('fs');
 const {ipcMain, app} = require('electron').remote;
 const TOUCH_WIDTH = 50;
+const TESTCASE_FOLDER = 'TestCases';
 angular
   .module('MainView', ['Utils', 'Filters'])
-  .controller('MainCtrl', ['$scope','$timeout', 'Storage', 'DeviceEventHelper', 'ScreenDisplayHelper', 'adb', 'Generator', 
-    function($scope, $timeout, Storage, DeviceEventHelper, ScreenDisplayHelper, adb, Generator) {
+  .controller('MainCtrl', ['$scope','$timeout', 'Storage', 'DeviceEventHelper', 'ScreenDisplayHelper', 'TestCaseSaver', 'ProjectHelper', 'adb', 'Generator', 
+    function($scope, $timeout, Storage, DeviceEventHelper, ScreenDisplayHelper, TestCaseSaver, ProjectHelper, adb, Generator) {
     let vm = this;
     vm.state = {recording:false};
     vm.testcases = null;
     vm.device = {};
+    vm.projectSettings = {};
+    ProjectHelper.loadSettings({
+        projectName: 'project1',
+      }).then(function(settings) {
+        console.log('loadSettings', settings);
+        vm.projectSettings = settings;
+    }, function(err) {
+      ProjectHelper.createSettings({
+        projectName: 'project1',
+      }).then(function(settings) {
+        console.log('createSettings', settings);
+          vm.projectSettings = settings;
+      });
+
+    });
 
     vm.reloadDevices = function() {
       adb.client.listDevices().then(function(devices) {
-        console.log('all devices', devices);
+        // console.log('all devices', devices);
         if(devices && devices.length == 1){
           vm.currentDeviceID = devices[0].id;
           adb.init(vm.currentDeviceID)
@@ -25,7 +41,7 @@ angular
       });
     };
     vm.reloadDevices();
-    $timeout(function() {
+    setInterval(function() {
       if(!vm.currentDeviceID){
         vm.reloadDevices();
       }
@@ -62,27 +78,27 @@ angular
     vm.cookedEvents = [];
     vm.record = function() {
       vm.state.recording = true;
-      vm.recordingID = Generator.uuid4();
-      console.log('recordingID ' + vm.recordingID);
       vm.testCase = {
+        id: Generator.uuid4(),
         rawEvents:[],
         steps:[]
       };
-      vm.testCase.recordingID = vm.recordingID;
-      const testcasesDir = path.resolve(app.getPath('userData'), 'Testcases');
+      const testcasesDir = path.resolve(app.getPath('userData'), TESTCASE_FOLDER);
       try{
         const stat = fs.statSync(testcasesDir);
       }catch(e){
         console.error(e);
         fs.mkdirSync(testcasesDir);    
       }
-      const testcasePath = path.resolve(app.getPath('userData'), 'Testcases', vm.recordingID);
+      const testcasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
       console.log(testcasePath);
+      vm.testCase.steps.push({
+        name: 'Initialization',
+        clip: ScreenDisplayHelper.fullDisplay(vm.device, TOUCH_WIDTH)
+      });
       fs.mkdir(testcasePath, function() {
         console.log(testcasePath + ' created');
-        adb.takeScreenshot(path.resolve(testcasePath, 'init.png'), function() {
-          console.log('screenshot finished');
-        });
+        vm.takeScreenShot({name:'init.png', stepIndex:0});
       });
       vm.recordDeviceEvents();
     };
@@ -93,16 +109,32 @@ angular
         name: 'End',
         clip: ScreenDisplayHelper.fullDisplay(vm.device, TOUCH_WIDTH)
       });
-      vm.takeScreenShot({stepIndex:vm.testCase.steps.length-1});
+      vm.takeScreenShot({name:'end.png', stepIndex:vm.testCase.steps.length-1});
       vm.state.recording = false;
-      recordingProcess && recordingProcess.kill();
-      console.log(vm.recordingID);
+      recordingProcess && recordingProcess.kill(); //TODO
       console.log(vm.testCase);
+      $('#save-testcase').openModal();
+    };
+
+    vm.saveTestCase = function() {
+      console.log('saveTestCase ', vm.testCaseName);
+      if(!vm.testCase || !vm.testCase.id){
+        console.error('save error');
+        return;
+      }else if(vm.testCaseName.length === 0){
+        console.error('no test case name');
+        return;
+      }
+      vm.testCase.name = vm.testCaseName;
+      TestCaseSaver.init(vm.testCase, {testCaseFolder:TESTCASE_FOLDER}).save();
+      ProjectHelper.addTestCase(vm.projectSettings, vm.testCase).then(function(settings) {
+        vm.projectSettings = settings;
+      });
     };
 
     vm.takeScreenShot = function(option) {
-      const screenshotFilename = Generator.uuid4() + '.png';
-      const testcasePath = path.resolve(app.getPath('userData'), 'Testcases', vm.recordingID);
+      const screenshotFilename = option.name || Generator.uuid4() + '.png';
+      const testcasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
       const screenshotFilePath = path.resolve(testcasePath, screenshotFilename);
       (function(stepIndex, screenshotFilePath){
         adb.takeScreenshot(screenshotFilePath, function() {
@@ -115,7 +147,7 @@ angular
     };
 
     vm.recordDeviceEvents = function() {
-      let stepIndex = 0;
+      let stepIndex = 1; //start from 1 because 0 is for init step
       recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt']);
       recordingProcess.stdout.on('data', function(data) {
         DeviceEventHelper
@@ -125,7 +157,6 @@ angular
 
             DeviceEventHelper.handleChoppedEvent(e, function(es) {
               console.log(es.state);
-              console.log(es.duration);
               const FIRST_TOUCH = 0;
               switch(es.state){
                 case 'power_button_down':

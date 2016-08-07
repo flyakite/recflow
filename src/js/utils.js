@@ -16,6 +16,62 @@ angular
       }
     };
   })
+  .service('ProjectHelper', ['$q', function($q) {
+    this.loadSettings = function(options) {
+      var d = $q.defer();
+      const settingsFile = path.resolve(app.getPath('userData'), options.projectName + '.settings')
+      fs.readFile(settingsFile, function(err, data) {
+        if(err){
+          console.error(err);
+          d.reject(err);
+          return
+        }
+        d.resolve(JSON.parse(data));
+      });
+      return d.promise;
+    };
+    this.createSettings = function(settings) {
+      var d = $q.defer();
+      const projectName = settings.projectName;
+      const settingsFile = path.resolve(app.getPath('userData'), projectName + '.settings')
+      fs.writeFile(settingsFile, JSON.stringify(settings), function(err, data) {
+        if(err){
+          console.error(err);
+          d.reject(err);
+          return
+        }
+        d.resolve(settings);
+      });
+      return d.promise;
+    };
+    this.addTestCase = function(settings, testCase) {
+      var d = $q.defer();
+      const projectName = settings.projectName;
+      const settingsFile = path.resolve(app.getPath('userData'), projectName + '.settings')
+      fs.readFile(settingsFile, function(err, data) {
+        if(err){
+          console.error(err);
+          d.reject(err);
+          return
+        }
+        settings = JSON.parse(data);
+        settings.testCases = settings.testCases || [];
+        settings.testCases.push({
+          id: testCase.id,
+          name: testCase.name
+        });
+        fs.writeFile(settingsFile, JSON.stringify(settings), function(err, data) {
+          if(err){
+            console.error(err);
+            d.reject(err);
+            return
+          }
+          d.resolve(settings);
+        });
+      });
+      return d.promise;
+    };
+  }])
   .service('Storage', ['$q', function($q) {
     this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));
     this.collection = null;
@@ -263,12 +319,14 @@ angular
                   this.currentSlot = parseInt(e.value);
                   break;
                 case 'ABS_MT_POSITION_X':
+                  console.log('ABS_MT_POSITION_X', this.touchCoordinates);
                   if(typeof this.touchCoordinates[this.currentSlot] === 'undefined'){
                     this.touchCoordinates[this.currentSlot] = [];
                   }
                   this.touchCoordinates[this.currentSlot].push({x:parseInt(e.value, 16),t:e.time});
                   break;
                 case 'ABS_MT_POSITION_Y':
+                  console.log('ABS_MT_POSITION_Y', this.touchCoordinates);
                   let coor = this.touchCoordinates[this.currentSlot];
                   coor[coor.length-1].y = parseInt(e.value, 16);
                   break;
@@ -333,14 +391,16 @@ angular
   }])
   .service('TestCaseSaver', ['$q', function($q) {
 
-    this.init = function(testCaseID) {
+    this.init = function(testCase, options) {
       //create json file in userData
-      this.testCaseID = testCaseID;
-      this.testCasePath = path.resolve(app.getPath('userData'), 'TestCase', this.testCaseID);
-
+      options = options || {};
+      options.testCaseFolder = options.testCaseFolder || 'TestCases';
+      this.testCase = testCase;
+      this.testCasePath = path.resolve(app.getPath('userData'), options.testCaseFolder, this.testCase.id);
+      return this;
     };
 
-    this.save = function() {
+    this.save = function(obj, callback) {
       /**
        *  save intergrated events to userData in json format
        *  {
@@ -358,7 +418,9 @@ angular
        *  }
        * 
        */
-      fs.writeFile(obj.strinify(), path.resolve(this.testCasePath, 'steps'));
+      console.log(path.resolve(this.testCasePath, 'steps.json'));
+      fs.writeFile(path.resolve(this.testCasePath, 'steps.json'), JSON.stringify(this.testCase), callback);
+      return this;
     };
   }])
   .service('ScreenDisplayHelper', [function() {
