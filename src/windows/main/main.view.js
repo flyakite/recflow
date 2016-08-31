@@ -6,27 +6,41 @@ const TOUCH_WIDTH = 50;
 const TESTCASE_FOLDER = 'TestCases';
 angular
   .module('MainView', ['Utils', 'Filters'])
-  .controller('MainCtrl', ['$scope','$timeout', 'Storage', 'DeviceEventHelper', 'ScreenDisplayHelper', 'TestCaseSaver', 'ProjectHelper', 'adb', 'Generator', 
-    function($scope, $timeout, Storage, DeviceEventHelper, ScreenDisplayHelper, TestCaseSaver, ProjectHelper, adb, Generator) {
+  .controller('MainCtrl', ['$q', '$scope','$timeout', 'Pouch', 'DeviceEventHelper', 'ScreenDisplayHelper', 'TestCaseHelper', 'ProjectHelper', 'adb', 'Generator', 
+    function($q, $scope, $timeout, Pouch, DeviceEventHelper, ScreenDisplayHelper, TestCaseHelper, ProjectHelper, adb, Generator) {
     let vm = this;
     vm.state = {recording:false};
-    vm.testcases = null;
+    vm.testCases = null;
     vm.device = {};
     vm.projectSettings = {};
+
     ProjectHelper.loadSettings({
         projectName: 'project1',
       }).then(function(settings) {
         console.log('loadSettings', settings);
         vm.projectSettings = settings;
+        $timeout(function() {
+          vm.testCaseDropdown();
+        });
     }, function(err) {
       ProjectHelper.createSettings({
         projectName: 'project1',
       }).then(function(settings) {
         console.log('createSettings', settings);
-          vm.projectSettings = settings;
+        vm.projectSettings = settings;
+        $timeout(function() {
+          vm.testCaseDropdown();
+        });
       });
 
     });
+    
+    vm.testCaseDropdown = function() {
+      $('.dropdown-button').dropdown({
+        hover:true,
+        alignment:'right'
+      });
+    };
 
     vm.reloadDevices = function() {
       adb.client.listDevices().then(function(devices) {
@@ -62,80 +76,152 @@ angular
       vm.device.displayScreenSize = displayScreenSize;
     };
 
-    Storage
-      .init('TestCase')
-      .then((db) => {
-        vm.testcases = db.getAll();
-        ipcMain.on('update-main-view', () => {
-          db.reload()
-            .then(() => {
-              vm.testcases = db.getAll();
-            });
-        });
-      });
+    // Storage
+    //   .init()
+    //   .then((db) => {
+    //     vm.testCases = db.getAll('TestCase');
+    //     // ipcMain.on('update-main-view', () => {
+    //     //   db.reload()
+    //     //     .then(() => {
+    //     //       vm.testCases = db.getAll('TestCase');
+    //     //     });
+    //     // });
+    //   });
 
     let recordingProcess;
+    const newTestCase = {
+      rawEvents:[],
+      steps:[]
+    };
     vm.cookedEvents = [];
     vm.record = function() {
       vm.state.recording = true;
-      vm.testCase = {
-        id: Generator.uuid4(),
-        rawEvents:[],
-        steps:[]
-      };
-      const testcasesDir = path.resolve(app.getPath('userData'), TESTCASE_FOLDER);
+      vm.testCase = angular.copy(newTestCase);
+      const testCasesDir = path.resolve(app.getPath('userData'), TESTCASE_FOLDER);
       try{
-        const stat = fs.statSync(testcasesDir);
+        const stat = fs.statSync(testCasesDir);
       }catch(e){
         console.error(e);
-        fs.mkdirSync(testcasesDir);    
+        fs.mkdirSync(testCasesDir);    
       }
-      const testcasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
-      console.log(testcasePath);
+      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
+      console.log(testCasePath);
+      //add the initial step
       vm.testCase.steps.push({
-        name: 'Initialization',
+        id: 'init',
+        name: 'Initial Screen',
         clip: ScreenDisplayHelper.fullDisplay(vm.device, TOUCH_WIDTH)
       });
-      fs.mkdir(testcasePath, function() {
-        console.log(testcasePath + ' created');
+      fs.mkdir(testCasePath, function() {
+        console.log(testCasePath + ' created');
         vm.takeScreenShot({name:'init.png', stepIndex:0});
       });
       vm.recordDeviceEvents();
     };
 
     vm.stop = function() {
-      //add final step
+      //add the final step
       vm.testCase.steps.push({
-        name: 'End',
+        id: 'end',
+        name: 'End Screen',
         clip: ScreenDisplayHelper.fullDisplay(vm.device, TOUCH_WIDTH)
       });
       vm.takeScreenShot({name:'end.png', stepIndex:vm.testCase.steps.length-1});
       vm.state.recording = false;
-      recordingProcess && recordingProcess.kill(); //TODO
+      // recordingProcess && recordingProcess.kill(); //TODO
+      adb.stopGetEvents();
       console.log(vm.testCase);
       $('#save-testcase').openModal();
     };
 
     vm.saveTestCase = function() {
-      console.log('saveTestCase ', vm.testCaseName);
-      if(!vm.testCase || !vm.testCase.id){
+      console.log('savetestCase ', vm.newTestCaseName);
+      if(!vm.testCase){
         console.error('save error');
         return;
-      }else if(vm.testCaseName.length === 0){
+      }else if(vm.newTestCaseName.length === 0){
         console.error('no test case name');
         return;
       }
-      vm.testCase.name = vm.testCaseName;
-      TestCaseSaver.init(vm.testCase, {testCaseFolder:TESTCASE_FOLDER}).save();
+      vm.testCase.name = vm.newTestCaseName;
+      // TestCaseHelper.save(vm.testCase, {testCaseFolder:TESTCASE_FOLDER});
+      //TODO: remove id?
+      // vm.testCases.insert(vm.testCase);
+      Pouch.save(vm.testCase, 'TestCase');
+
       ProjectHelper.addTestCase(vm.projectSettings, vm.testCase).then(function(settings) {
         vm.projectSettings = settings;
+        $timeout(function() {
+          vm.testCaseDropdown();
+        });
+      });
+    };
+
+    vm.deleteTestCase = function(testCaseID) {
+      ProjectHelper.deleteTestCase(vm.projectSettings, testCaseID).then(function(settings) {
+        vm.projectSettings = settings;
+        $timeout(function() {
+          vm.testCaseDropdown();
+        });
+      });
+    };
+
+    vm.showTestCaseSteps = function(testCaseID) {
+      const d = $q.defer();
+      TestCaseHelper.load(testCaseID, {testCaseFolder:TESTCASE_FOLDER}).then(function(testCase) {
+        vm.testCase = testCase;
+        d.resolve(vm.testCase);
+      });
+      return d.promise;
+    };
+
+    vm.testCaseStepTimeouts = [];
+    vm.playbackTestCase = function(testCaseID) {
+      const d = $q.defer(), d2 = $q.defer();
+      if(!vm.testCase || vm.testCase.id !== testCaseID){
+        vm.showTestCaseSteps(testCaseID).then(function() {
+          d.resolve();
+        });
+      }else{
+        d.resolve();
+      }
+      $q.when(d.promise).then(function() {
+        const s1e0 = vm.testCase.steps[1].eventsPack[0];
+        let tcst, sie0, e, tcset;
+        for(let i=0;i<vm.testCase.steps.length;i++){
+          if(!vm.testCase.steps[i].eventsPack){
+            //init or end
+            //TODO: check screen
+            // vm.testCase.steps[i].pass = true;
+          }else{
+            (function(i) {
+              sie0 = vm.testCase.steps[i].eventsPack[0];
+              tcst = setTimeout(function() {
+                const e0 = vm.testCase.steps[i].eventsPack[0];
+                for(let j=0;j<vm.testCase.steps[i].eventsPack.length;j++){
+                  (function(i, j) {
+                    e = vm.testCase.steps[i].eventsPack[j];
+                    tcset = setTimeout(function() {
+                      e = vm.testCase.steps[i].eventsPack[j]; //renew
+                      // console.log(i,j,e);
+                      // console.log('send ', e);
+                      adb.sendEvent(e);
+                    }, (e.time - e0.time)*1000);
+                    vm.testCaseStepTimeouts.push(tcset);
+                  })(i, j)
+                }
+              }, (sie0.time - s1e0.time)*1000);
+              vm.testCaseStepTimeouts.push(tcst);
+            })(i);
+          }
+        }
       });
     };
 
     vm.takeScreenShot = function(option) {
       const screenshotFilename = option.name || Generator.uuid4() + '.png';
-      const testcasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
-      const screenshotFilePath = path.resolve(testcasePath, screenshotFilename);
+      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
+      const screenshotFilePath = path.resolve(testCasePath, screenshotFilename);
       (function(stepIndex, screenshotFilePath){
         adb.takeScreenshot(screenshotFilePath, function() {
             console.log('update screenshot for step ', stepIndex);
@@ -148,8 +234,10 @@ angular
 
     vm.recordDeviceEvents = function() {
       let stepIndex = 1; //start from 1 because 0 is for init step
-      recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt']);
-      recordingProcess.stdout.on('data', function(data) {
+      // recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt']);
+      // recordingProcess.stdout.on('data', function(data) {
+      DeviceEventHelper.init();
+      adb.getEvents(function(data) {
         DeviceEventHelper
           .chopRawEvents(data.toString(), function(e) {
             vm.testCase.rawEvents.push(e.raw);
@@ -219,8 +307,6 @@ angular
             });
         });
       });
-    }
-
-    
+    };
 
   }]);

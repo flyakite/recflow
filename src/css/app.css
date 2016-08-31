@@ -13,10 +13,17 @@
   width: 512px;
   padding: 20px 10px;
 }*/
-
+.collection{
+  overflow: visible;
+}
 .top-nav-bar{
   margin-bottom: 10px;
 }
+
+.testcase-function i{
+  padding: 3px 15px;
+}
+
 
 .testcase-steps li{
   position: relative;

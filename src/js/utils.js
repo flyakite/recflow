@@ -3,12 +3,13 @@
 const {ipcRenderer, clipboard} = require('electron'),
   uuid = require('uuid'),
   loki = require('lokijs'),
+  pouchdb = require('pouchdb'),
   path = require('path');
 const childProcess = require('child_process');
 const adb = require('adbkit');
 
 angular
-  .module('Utils', [])
+  .module('Utils', ['Config'])
   .factory('Generator', function() {
     return {
       uuid4: function() {
@@ -71,103 +72,228 @@ angular
       });
       return d.promise;
     };
-  }])
-  .service('Storage', ['$q', function($q) {
-    this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));
-    this.collection = null;
-    this.collectionName = null;
-    this.loaded = false;
-
-    this.init = function(collectionName) {
-      let d = $q.defer();
-      this.collectionName = collectionName;
-      this.reload()
-        .then(()=> {
-          this.collection = this.db.getCollection(collectionName);
-          this.collection || this.db.addCollection(collectionName);
-          d.resolve(this);
-        })
-        .catch((e)=> {
-          // create collection
-          this.db.addCollection(collectionName);
-          // save and create file
-          this.db.saveDatabase();
-
-          this.collection = this.db.getCollection(collectionName);
-          // this.loaded = true;
-
-          d.resolve(this);
-        });
-
-      return d.promise;
-    };
-
-    this.reload = function() {
-      let d = $q.defer();
-
-      this.loaded = false;
-
-      this.db.loadDatabase({}, (e)=> {
-        if(e) {
-          d.reject(e);
-        } else {
-          this.loaded = true;
-          d.resolve(this);
+    this.deleteTestCase = function(settings, testCaseID) {
+      var d = $q.defer();
+      const projectName = settings.projectName;
+      const settingsFile = path.resolve(app.getPath('userData'), projectName + '.settings')
+      for(let i=0; i<settings.testCases.length;i++){
+        console.log(settings.testCases[i].id, testCaseID);
+        if(settings.testCases[i].id == testCaseID){
+          console.log(i);
+          settings.testCases.splice(i,1);
+          console.log(settings.testCases);
+          break;
         }
-      });
-
-      return d.promise;
-    };
-
-    this.getCollection = function() {
-      this.collection = this.db.getCollection(this.collectionName);
-      return this.collection;
-    };
-
-    this.isLoaded = function() {
-      return this.loaded;
-    };
-
-    this.add = function(data) {
-      let d = $q.defer();
-
-      if(this.isLoaded() && this.getCollection()) {
-        this.getCollection().insert(data);
-        this.db.saveDatabase();
-
-        d.resolve(this.getCollection());
-      } else {
-        d.reject(new Error('DB NOT READY'));
       }
-
+      console.log(settings);
+      fs.writeFile(settingsFile, JSON.stringify(settings), function(err, data) {
+        if(err){
+          console.error(err);
+          d.reject(err);
+          return
+        }
+        d.resolve(settings);
+      });
       return d.promise;
     };
-
-    this.remove = function(doc) {
-      return function() {
-        let d = $q.defer();
-
-        if(this.isLoaded() && this.getCollection()) {
-          this.getCollection().remove(doc);
-          this.db.saveDatabase();
-
-          // we need to inform the insert view that the db content has changed
-          ipcRenderer.send('reload-insert-view');
-
-          d.resolve(true);
-        } else {
-          d.reject(new Error('DB NOT READY'));
-        }
-
-        return d.promise;
-      }.bind(this);
-    };
-
-    this.getAll = function() {
-      return (this.getCollection()) ? this.getCollection().data : null;
-    };
   }])
-  .service('adb', ['$q', '$timeout', function($q, $timeout) {
+  .service('Pouch', ['$q', function($q) {
+    const d = $q.defer();
+    const db = new pouchdb('recflow'); //, {adapter : 'websql'}
+    
+    this.save = function(doc, _class) {
+      if(!doc._id){
+        //new item
+        doc._id = uuid.v4();
+      }
+      doc.class = _class || doc.class;
+
+      db.put(doc).then(function(result) {
+        return d.resolve(result);
+      }).catch(function(err) {
+        console.error(err);
+        return d.reject(err);
+      });
+    };
+    this.get = function(docID) {
+      db.get(docID).then(function(result) {
+        return d.resolve(result);
+      }).catch(function(err) {
+        console.error(err);
+        return d.reject(err);
+      });
+    };
+    return d.promise;
+  }])
+  // .service('Storage', ['$q', function($q) {
+  //   this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));
+  //   this.loaded = false;
+
+  //   this.init = function() {
+  //     return this.reload();
+  //   };
+
+  //   this.reload = function() {
+  //     let d = $q.defer();
+
+  //     this.loaded = false;
+
+  //     this.db.loadDatabase({}, (e)=> {
+  //       if(e) {
+  //         d.reject(e);
+  //       } else {
+  //         this.loaded = true;
+  //         d.resolve(this);
+  //       }
+  //     });
+
+  //     return d.promise;
+  //   };
+
+  //   this.getCollection = function(collectionName) {
+  //     this.collection = this.db.getCollection(collectionName);
+  //     return this.collection;
+  //   };
+
+  //   this.isLoaded = function() {
+  //     return this.loaded;
+  //   };
+
+  //   this.add = function(collectionName, data) {
+  //     let d = $q.defer();
+
+  //     if(this.isLoaded() && this.getCollection(collectionName)) {
+  //       this.getCollection(collectionName).insert(data);
+  //       this.db.saveDatabase();
+
+  //       d.resolve(this.getCollection(collectionName));
+  //     } else {
+  //       d.reject(new Error('DB NOT READY'));
+  //     }
+
+  //     return d.promise;
+  //   };
+
+  //   this.remove = function(collectionName, doc) {
+  //     return function() {
+  //       let d = $q.defer();
+
+  //       if(this.isLoaded() && this.getCollection(collectionName)) {
+  //         this.getCollection(collectionName).remove(doc);
+  //         this.db.saveDatabase();
+
+  //         // we need to inform the insert view that the db content has changed
+  //         // ipcRenderer.send('reload-insert-view');
+
+  //         d.resolve(true);
+  //       } else {
+  //         d.reject(new Error('DB NOT READY'));
+  //       }
+
+  //       return d.promise;
+  //     }.bind(this);
+  //   };
+
+  //   this.getAll = function(collectionName) {
+  //     return (this.getCollection(collectionName)) ? this.getCollection(collectionName).data : null;
+  //   };
+  // }])
+  // .service('Storage', ['$q', function($q) {
+  //   this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));
+  //   this.collection = null;
+  //   this.collectionName = null;
+  //   this.loaded = false;
+
+  //   this.init = function(collectionName) {
+  //     let d = $q.defer();
+  //     this.collectionName = collectionName;
+  //     this.reload()
+  //       .then(()=> {
+  //         this.collection = this.db.getCollection(collectionName);
+  //         this.collection || this.db.addCollection(collectionName);
+  //         d.resolve(this);
+  //       })
+  //       .catch((e)=> {
+  //         // create collection
+  //         this.db.addCollection(collectionName);
+  //         // save and create file
+  //         this.db.saveDatabase();
+
+  //         this.collection = this.db.getCollection(collectionName);
+  //         // this.loaded = true;
+
+  //         d.resolve(this);
+  //       });
+
+  //     return d.promise;
+  //   };
+
+  //   this.reload = function() {
+  //     let d = $q.defer();
+
+  //     this.loaded = false;
+
+  //     this.db.loadDatabase({}, (e)=> {
+  //       if(e) {
+  //         d.reject(e);
+  //       } else {
+  //         this.loaded = true;
+  //         d.resolve(this);
+  //       }
+  //     });
+
+  //     return d.promise;
+  //   };
+
+  //   this.getCollection = function() {
+  //     this.collection = this.db.getCollection(this.collectionName);
+  //     return this.collection;
+  //   };
+
+  //   this.isLoaded = function() {
+  //     return this.loaded;
+  //   };
+
+  //   this.add = function(data) {
+  //     let d = $q.defer();
+
+  //     if(this.isLoaded() && this.getCollection()) {
+  //       this.getCollection().insert(data);
+  //       this.db.saveDatabase();
+
+  //       d.resolve(this.getCollection());
+  //     } else {
+  //       d.reject(new Error('DB NOT READY'));
+  //     }
+
+  //     return d.promise;
+  //   };
+
+  //   this.remove = function(doc) {
+  //     return function() {
+  //       let d = $q.defer();
+
+  //       if(this.isLoaded() && this.getCollection()) {
+  //         this.getCollection().remove(doc);
+  //         this.db.saveDatabase();
+
+  //         // we need to inform the insert view that the db content has changed
+  //         ipcRenderer.send('reload-insert-view');
+
+  //         d.resolve(true);
+  //       } else {
+  //         d.reject(new Error('DB NOT READY'));
+  //       }
+
+  //       return d.promise;
+  //     }.bind(this);
+  //   };
+
+  //   this.getAll = function() {
+  //     return (this.getCollection()) ? this.getCollection().data : null;
+  //   };
+  // }])
+  .service('adb', ['$q', '$timeout', 'EV_CODE', function($q, $timeout, EV_CODE) {
     this.client = adb.createClient();
 
     this.init = function(deviceID) {
@@ -190,7 +316,7 @@ angular
           }
           d1.resolve(touchScreenSize);
         });
-      this.client.shell(deviceID, 'dumpsys window | grep "mUnrestrictedScreen"')
+      this.client.shell(this.deviceID, 'dumpsys window | grep "mUnrestrictedScreen"')
         .then(adb.util.readAll)
         .then((result)=> {
           let displayScreenSize = {};
@@ -204,10 +330,14 @@ angular
         })
       return $q.all([d1.promise, d2.promise]);
     };
-    this.getEvent = function(callback) {
-      const recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
-      recordingProcess.stdout.on('data', callback);
+    
+    this.getEvents = function(callback) {
+      this.recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
+      this.recordingProcess.stdout.on('data', callback);
     };
+    this.stopGetEvents = function() {
+      this.recordingProcess && this.recordingProcess.kill();
+    }
     this.takeScreenshot = function(savePath, callback) {
       // console.log(this.deviceID, savePath);
       const stream = fs.createWriteStream(savePath);
@@ -218,9 +348,38 @@ angular
         screencapStream.on('end', callback);
       });
     };
+
+    this.codeMap = function(code) {
+      if(Object.keys(EV_CODE).indexOf(code) !== -1){
+        const v = EV_CODE[code]
+        if(/^0x[0-9a-f]+$/.test(v)){
+          return parseInt(v,16);
+        }else if(/^[0-9]+$/.test(v)){
+          return parseInt(v, 10);
+        }else{
+          return v;
+        }
+      }else{
+        return code;
+      }
+
+    };
+    this.sendEvent = function(e) {
+      //http://androidxref.com/4.4_r1/xref/prebuilts/ndk/6/platforms/android-9/arch-arm/usr/include/linux/input.h
+      //decimal
+      if(/^[0-9a-f]{8}$/.test(e.value)){
+        e.value = parseInt(e.value, 16);
+      }
+      // const command = `sendevent /dev/input/${e.input} ${e.type} ${e.code} ${e.value}`;
+      const o_command = `sendevent /dev/input/${e.input} ${e.type} ${e.code} ${e.value}`;
+      const command = `sendevent /dev/input/${e.input} ${this.codeMap(e.type)} ${this.codeMap(e.code)} ${this.codeMap(e.value)}`;
+      console.log(o_command);
+      this.client.shell(this.deviceID, command);
+    };
     return this;
   }])
   .service('DeviceEventHelper', ['$q', function($q) {
+    console.log('DeviceEventHelper');
     this.state = 'none';
     this.touchNumber = 0;
     this.buffer = [];
@@ -228,6 +387,17 @@ angular
     this.currentSlot = 0;
     this.eventsPack = [];
     this.touchDuration = [];
+    this.init = function() {
+      console.log('DeviceEventHelper init');
+      this.state = 'none';
+      this.touchNumber = 0;
+      this.buffer = [];
+      this.touchCoordinates = {};
+      this.currentSlot = 0;
+      this.eventsPack = [];
+      this.touchDuration = [];
+      return this;
+    };
     this.handleChoppedEvent = function(e, callback) {
       /**
        * a event looks like
@@ -265,7 +435,6 @@ angular
             case 'EV_ABS':
               switch(e.code){
                 case 'ABS_MT_TRACKING_ID':
-                  console.log('touchNumber', this.touchNumber);
                   if(e.value !== 'ffffffff'){
                     //new touch
                     this.touchDuration[this.touchNumber] = {start:e.time};
@@ -328,7 +497,9 @@ angular
                 case 'ABS_MT_POSITION_Y':
                   console.log('ABS_MT_POSITION_Y', this.touchCoordinates);
                   let coor = this.touchCoordinates[this.currentSlot];
-                  coor[coor.length-1].y = parseInt(e.value, 16);
+                  if(coor){
+                    coor[coor.length-1].y = parseInt(e.value, 16);
+                  }
                   break;
                 default:
                   // console.log(e.code);
@@ -389,18 +560,13 @@ angular
     };
 
   }])
-  .service('TestCaseSaver', ['$q', function($q) {
+  .service('TestCaseHelper', ['$q', function($q) {
 
-    this.init = function(testCase, options) {
-      //create json file in userData
+    this.save = function(testCase, options) {
       options = options || {};
       options.testCaseFolder = options.testCaseFolder || 'TestCases';
       this.testCase = testCase;
       this.testCasePath = path.resolve(app.getPath('userData'), options.testCaseFolder, this.testCase.id);
-      return this;
-    };
-
-    this.save = function(obj, callback) {
       /**
        *  save intergrated events to userData in json format
        *  {
@@ -418,10 +584,33 @@ angular
        *  }
        * 
        */
+      
+      const d = $q.defer();
       console.log(path.resolve(this.testCasePath, 'steps.json'));
-      fs.writeFile(path.resolve(this.testCasePath, 'steps.json'), JSON.stringify(this.testCase), callback);
-      return this;
+      fs.writeFile(path.resolve(this.testCasePath, 'steps.json'), JSON.stringify(this.testCase), function(result) {
+        d.resolve(result);
+      }, function(err) {
+        d.reject(err);
+      });
+      return d.promise;
     };
+
+    this.load = function(testCaseID, options) {
+      const d = $q.defer();
+      options = options || {};
+      options.testCaseFolder = options.testCaseFolder || 'TestCases';
+      console.log(app.getPath('userData'), options.testCaseFolder, testCaseID);
+      this.testCasePath = path.resolve(app.getPath('userData'), options.testCaseFolder, testCaseID);
+      fs.readFile(path.resolve(this.testCasePath, 'steps.json'), function(err, data) {
+        if(err){
+          d.reject(err);
+        }else{
+          d.resolve(JSON.parse(data));
+        }
+      });
+      return d.promise;
+    };
+
   }])
   .service('ScreenDisplayHelper', [function() {
     const FIRST_TOUCH = 0;
