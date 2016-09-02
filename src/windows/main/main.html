@@ -36,7 +36,7 @@
       </div>
 
       <div class="project-container col s6">
-        <a href class="btn waves-effect waves-light red diabled" ng-click="vm.record()" ng-if="!vm.state.recording">
+        <a href id="main-record-btn" class="btn waves-effect waves-light red diabled" ng-click="vm.record()" ng-if="!vm.state.recording">
           <i class="left fa fa-circle"></i>
           <font class="">Record</font>
         </a>
@@ -132,6 +132,7 @@
   </div>
   <script src="../../node_modules/jquery/dist/jquery.min.js"></script>
   <script src="../../node_modules/angular/angular.min.js"></script>
+  <script src="../../node_modules/pouchdb/dist/pouchdb.min.js"></script>
   <script src="../../node_modules/hammerjs/hammer.min.js"></script>
   <script src="../../node_modules/materialize-css/dist/js/materialize.min.js"></script>
   <!-- load a script in a server-side context -->

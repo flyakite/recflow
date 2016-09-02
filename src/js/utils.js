@@ -3,7 +3,7 @@
 const {ipcRenderer, clipboard} = require('electron'),
   uuid = require('uuid'),
   loki = require('lokijs'),
-  pouchdb = require('pouchdb'),
+  //pouchdb = require('pouchdb'), https://github.com/nolanlawson/pouchdb-electron#using-leveldb-via-leveldown
   path = require('path');
 const childProcess = require('child_process');
 const adb = require('adbkit');
@@ -98,10 +98,11 @@ angular
     };
   }])
   .service('Pouch', ['$q', function($q) {
-    const d = $q.defer();
-    const db = new pouchdb('recflow'); //, {adapter : 'websql'}
+    //PouchDB included in html
+    const db = new PouchDB('recflow'); //, {adapter : 'websql'}
     
     this.save = function(doc, _class) {
+      const d = $q.defer();
       if(!doc._id){
         //new item
         doc._id = uuid.v4();
@@ -114,16 +115,29 @@ angular
         console.error(err);
         return d.reject(err);
       });
+      return d.promise;
     };
-    this.get = function(docID) {
+    this.get_by_id = function(docID) {
+      const d = $q.defer();
       db.get(docID).then(function(result) {
         return d.resolve(result);
       }).catch(function(err) {
         console.error(err);
         return d.reject(err);
       });
+      return d.promise;
     };
-    return d.promise;
+    this.remove = function(doc) {
+      const d = $q.defer();
+      db.remove(doc._id, doc._rev).then(function(result) {
+        return d.resolve(result);
+      }).catch(function(err) {
+        console.error(err);
+        return d.reject(err);
+      });
+      return d.promise;
+    };
+    return this;
   }])
   // .service('Storage', ['$q', function($q) {
   //   this.db = new loki(path.resolve(app.getPath('userData'), 'app.db'));

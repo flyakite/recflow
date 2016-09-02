@@ -2,8 +2,13 @@
 
 const fs = require('fs');
 const {ipcMain, app} = require('electron').remote;
+const assert = require('assert');
+
 const TOUCH_WIDTH = 50;
 const TESTCASE_FOLDER = 'TestCases';
+const TESTCASE = {
+  classname: 'TestCase',
+}
 angular
   .module('MainView', ['Utils', 'Filters'])
   .controller('MainCtrl', ['$q', '$scope','$timeout', 'Pouch', 'DeviceEventHelper', 'ScreenDisplayHelper', 'TestCaseHelper', 'ProjectHelper', 'adb', 'Generator', 
@@ -17,7 +22,7 @@ angular
     ProjectHelper.loadSettings({
         projectName: 'project1',
       }).then(function(settings) {
-        console.log('loadSettings', settings);
+        // console.log('ProjectSettings', settings);
         vm.projectSettings = settings;
         $timeout(function() {
           vm.testCaseDropdown();
@@ -307,6 +312,26 @@ angular
             });
         });
       });
+
     };
 
+    //temp easy testing code
+    vm.test = function() {
+      console.log('test');
+      let testCase = angular.copy(newTestCase);
+      testCase.steps.push({
+        sid: 'test',
+        name: 'Initial Screen',
+      });
+      Pouch.save(testCase, TESTCASE.classname)
+      .then(function(result) {
+        console.log(result);
+        return Pouch.get_by_id(result.id)
+        .then(function(result) {
+          console.log(result);
+          return Pouch.remove(result);
+        });
+      });
+    }
+    vm.test();
   }]);

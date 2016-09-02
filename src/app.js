@@ -1,4 +1,5 @@
 const {app, ipcMain, BrowserWindow} = require('electron');
+require('electron-reload')(__dirname);
 
 let mainWindow = null;
 
