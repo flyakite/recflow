@@ -5,6 +5,7 @@
   "main": "src/app.js",
   "scripts": {
     "start": "electron ./src",
+    "test": "cd src && node ./tests/test.js",
     "dist": "gulp electron"
   },
   "repository": {

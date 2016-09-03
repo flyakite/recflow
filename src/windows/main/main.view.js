@@ -6,39 +6,79 @@ const assert = require('assert');
 
 const TOUCH_WIDTH = 50;
 const TESTCASE_FOLDER = 'TestCases';
+
 const TESTCASE = {
   classname: 'TestCase',
-}
+};
+const PROJECT_SETTING = {
+  classname: 'ProjectSetting'
+};
+
 angular
-  .module('MainView', ['Utils', 'Filters'])
-  .controller('MainCtrl', ['$q', '$scope','$timeout', 'Pouch', 'DeviceEventHelper', 'ScreenDisplayHelper', 'TestCaseHelper', 'ProjectHelper', 'adb', 'Generator', 
-    function($q, $scope, $timeout, Pouch, DeviceEventHelper, ScreenDisplayHelper, TestCaseHelper, ProjectHelper, adb, Generator) {
+  .module('MainView', ['Utils', 'Services', 'Filters'])
+  .controller('MainCtrl', ['$q', '$scope','$timeout', 'Storage', 'DeviceEventHelper', 'ScreenDisplayHelper', 'adb', 'Generator', 
+    function($q, $scope, $timeout, Storage, DeviceEventHelper, ScreenDisplayHelper, adb, Generator) {
     let vm = this;
     vm.state = {recording:false};
-    vm.testCases = null;
+    vm.testCases = [];
     vm.device = {};
-    vm.projectSettings = {};
+    vm.projectSetting = {};
+    vm.projectSettingCollection = {};
+    vm.testCaseCollection = {};
 
-    ProjectHelper.loadSettings({
-        projectName: 'project1',
-      }).then(function(settings) {
-        // console.log('ProjectSettings', settings);
-        vm.projectSettings = settings;
+    const defaultProject = {
+      'name': 'default',
+      'class': PROJECT_SETTING.classname,
+      'testCases': []
+    };
+    Storage.ready().then(function() {
+      vm.projectSettingCollection = Storage.getCollection(PROJECT_SETTING.classname);
+      vm.testCaseCollection = Storage.getCollection(TESTCASE.classname);
+      let projectSetting = vm.projectSettingCollection
+        .findOne({
+          '$and':[
+            {'name': defaultProject.class},
+            {'class': defaultProject.class}
+          ]
+        });
+      if(projectSetting){
+        console.log('found project setting');
+        vm.projectSetting = projectSetting;
         $timeout(function() {
           vm.testCaseDropdown();
         });
-    }, function(err) {
-      ProjectHelper.createSettings({
-        projectName: 'project1',
-      }).then(function(settings) {
-        console.log('createSettings', settings);
-        vm.projectSettings = settings;
-        $timeout(function() {
-          vm.testCaseDropdown();
-        });
-      });
+      }else{
+        console.log('new project setting');
 
+        vm.projectSettingCollection.insert(defaultProject);
+        vm.projectSetting = defaultProject;
+        Storage.saveDatabase();
+      }
+      console.log(vm.projectSetting);
+
+      vm.testCases = Storage.getAll(TESTCASE.classname);
+          // .chain().simplesort('order').data();
     });
+    // ProjectHelper.loadSetting({
+    //     projectName: defaultProjectName,
+    //   }).then(function(settings) {
+    //     // console.log('ProjectSettings', settings);
+    //     vm.projectSetting = settings;
+    //     $timeout(function() {
+    //       vm.testCaseDropdown();
+    //     });
+    // }, function(err) {
+    //   ProjectHelper.createSetting({
+    //     projectName: defaultProjectName,
+    //   }).then(function(settings) {
+    //     console.log('createSetting', settings);
+    //     vm.projectSetting = settings;
+    //     $timeout(function() {
+    //       vm.testCaseDropdown();
+    //     });
+    //   });
+
+    // });
     
     vm.testCaseDropdown = function() {
       $('.dropdown-button').dropdown({
@@ -81,18 +121,6 @@ angular
       vm.device.displayScreenSize = displayScreenSize;
     };
 
-    // Storage
-    //   .init()
-    //   .then((db) => {
-    //     vm.testCases = db.getAll('TestCase');
-    //     // ipcMain.on('update-main-view', () => {
-    //     //   db.reload()
-    //     //     .then(() => {
-    //     //       vm.testCases = db.getAll('TestCase');
-    //     //     });
-    //     // });
-    //   });
-
     let recordingProcess;
     const newTestCase = {
       rawEvents:[],
@@ -102,6 +130,7 @@ angular
     vm.record = function() {
       vm.state.recording = true;
       vm.testCase = angular.copy(newTestCase);
+      vm.testCase.id = Generator.uuid4();
       const testCasesDir = path.resolve(app.getPath('userData'), TESTCASE_FOLDER);
       try{
         const stat = fs.statSync(testCasesDir);
@@ -149,35 +178,45 @@ angular
         return;
       }
       vm.testCase.name = vm.newTestCaseName;
-      // TestCaseHelper.save(vm.testCase, {testCaseFolder:TESTCASE_FOLDER});
-      //TODO: remove id?
-      // vm.testCases.insert(vm.testCase);
-      Pouch.save(vm.testCase, 'TestCase');
+      vm.testCaseCollection.insert(vm.testCase);
+      Storage.saveDatabase();
 
-      ProjectHelper.addTestCase(vm.projectSettings, vm.testCase).then(function(settings) {
-        vm.projectSettings = settings;
-        $timeout(function() {
-          vm.testCaseDropdown();
-        });
+      vm.projectSetting.testCases = vm.projectSetting.testCases || [];
+      vm.projectSetting.testCases.push({
+        id: vm.testCase.id,
+        name: vm.testCase.name,
+        order: vm.testCases.length
+      });
+      vm.projectSettingCollection.update(vm.projectSetting);
+      $timeout(function() {
+        vm.testCaseDropdown();
       });
     };
 
     vm.deleteTestCase = function(testCaseID) {
-      ProjectHelper.deleteTestCase(vm.projectSettings, testCaseID).then(function(settings) {
-        vm.projectSettings = settings;
-        $timeout(function() {
-          vm.testCaseDropdown();
-        });
-      });
+      // ProjectHelper.deleteTestCase(vm.projectSetting, testCaseID).then(function(settings) {
+      //   vm.projectSetting = settings;
+      //   $timeout(function() {
+      //     vm.testCaseDropdown();
+      //   });
+      // });
+      for(var i=vm.projectSetting.testCases.length;i--;){
+        if(vm.projectSetting.testCases[i].id==testCaseID){
+          vm.projectSetting.testCases.splice(i,1);
+          break;
+        }
+      }
+      vm.projectSettingCollection.update(vm.projectSetting);
     };
 
     vm.showTestCaseSteps = function(testCaseID) {
-      const d = $q.defer();
-      TestCaseHelper.load(testCaseID, {testCaseFolder:TESTCASE_FOLDER}).then(function(testCase) {
-        vm.testCase = testCase;
-        d.resolve(vm.testCase);
-      });
-      return d.promise;
+      // const d = $q.defer();
+      // TestCaseHelper.load(testCaseID, {testCaseFolder:TESTCASE_FOLDER}).then(function(testCase) {
+      //   vm.testCase = testCase;
+      //   d.resolve(vm.testCase);
+      // });
+      // return d.promise;
+      vm.testCase = vm.testCaseCollection.get(testCaseID);
     };
 
     vm.testCaseStepTimeouts = [];
@@ -317,21 +356,33 @@ angular
 
     //temp easy testing code
     vm.test = function() {
-      console.log('test');
-      let testCase = angular.copy(newTestCase);
+      var testCase = angular.copy(newTestCase);
+      testCase.name = "test";
       testCase.steps.push({
         sid: 'test',
         name: 'Initial Screen',
       });
-      Pouch.save(testCase, TESTCASE.classname)
-      .then(function(result) {
-        console.log(result);
-        return Pouch.get_by_id(result.id)
-        .then(function(result) {
-          console.log(result);
-          return Pouch.remove(result);
-        });
-      });
+      // Pouch.save(testCase, TESTCASE.classname)
+      // .then(function(result) {
+      //   console.log(result);
+      //   return Pouch.get_by_id(result.id);
+      // }).then(function(result) {
+      //   console.log(result);
+      //   return Pouch.remove(result);
+      // });
+      // Storage.ready().then(function() {
+      //   let testCaseCollection = Storage.getCollection(TESTCASE.classname);
+      //   testCaseCollection.insert(testCase);
+      //   // Storage.saveDatabase();
+      //   let tc = testCaseCollection.findOne({'name':'test'});
+      //   assert.notEqual(tc, null);
+      //   testCaseCollection.remove(testCase);
+      //   // Storage.saveDatabase();
+      //   tc = testCaseCollection.findOne({'name':'test'});
+      //   assert.equal(tc, null);
+      //   console.log('Storage test finished');
+      // });
+
     }
     vm.test();
   }]);
