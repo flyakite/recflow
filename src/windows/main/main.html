@@ -58,7 +58,7 @@
         <div class="testcase-section">
           <ul class="testcase-list collection">
             <li class="collection-item"
-              ng-repeat="tc in vm.projectSettings.testCases track by $index"
+              ng-repeat="tc in vm.projectSetting.testCases track by $index"
             >
               <a href class="show-testcase-steps"
                 ng-click="vm.showTestCaseSteps(tc.id)"
@@ -110,14 +110,14 @@
             <div class="row">
               <div class="input-field col s6">
                 <input id="testcase-name" type="text" class="validate" 
-                  ng-model="vm.newTestCaseName">
+                  ng-model="vm.newTestCaseName" ng-enter="vm.saveTestCase()">
                 <label for="testcase-name">Name</label>
               </div>
             </div>
           </p>
         </div>
         <div class="modal-footer">
-          <a href class="modal-action modal-close btn-flat"
+          <a href class="btn-flat"
             ng-click="vm.saveTestCase()"
             >
             Save

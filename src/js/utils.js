@@ -331,10 +331,37 @@ angular
       }
       // const command = `sendevent /dev/input/${e.input} ${e.type} ${e.code} ${e.value}`;
       const o_command = `sendevent /dev/input/${e.input} ${e.type} ${e.code} ${e.value}`;
+      // console.log(o_command);
       const command = `sendevent /dev/input/${e.input} ${this.codeMap(e.type)} ${this.codeMap(e.code)} ${this.codeMap(e.value)}`;
-      console.log(o_command);
+      // console.log(command);
+      this.client.shell(this.deviceID, command);
+    };
+    this.sendEventBlock = function(eventBlock) {
+      let command = ``, e;
+      for(let k=0;k<eventBlock.length;k++){
+        e = eventBlock[k];
+        if(/^[0-9a-f]{8}$/.test(e.value)){
+          e.value = parseInt(e.value, 16);
+        }
+        command += `sendevent /dev/input/${e.input} ${this.codeMap(e.type)} ${this.codeMap(e.code)} ${this.codeMap(e.value)};`;
+      }
+      // command += `"`;
+      console.log(command);
       this.client.shell(this.deviceID, command);
     };
     return this;
   }])
+  .directive('ngEnter', function() {
+    return function(scope, element, attrs) {
+      element.bind("keydown keypress", function(event) {
+        if(event.which === 13) {
+          scope.$apply(function(){
+            scope.$eval(attrs.ngEnter, {'event': event});
+          });
+
+          event.preventDefault();
+        }
+      });
+    };
+  });
 ;

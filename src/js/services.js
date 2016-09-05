@@ -159,6 +159,7 @@ angular
             case 'EV_ABS':
               switch(e.code){
                 case 'ABS_MT_TRACKING_ID':
+                  console.log('touchNumber ', this.touchNumber);
                   if(e.value !== 'ffffffff'){
                     //new touch
                     this.touchDuration[this.touchNumber] = {start:e.time};
@@ -216,13 +217,39 @@ angular
                   if(typeof this.touchCoordinates[this.currentSlot] === 'undefined'){
                     this.touchCoordinates[this.currentSlot] = [];
                   }
-                  this.touchCoordinates[this.currentSlot].push({x:parseInt(e.value, 16),t:e.time});
+                  this.touchCoordinates[this.currentSlot].push(
+                    {
+                      x:parseInt(e.value, 16),
+                      t:e.time
+                    });
+                      
                   break;
                 case 'ABS_MT_POSITION_Y':
-                  console.log('ABS_MT_POSITION_Y', this.touchCoordinates);
+                  /**
+                   * There's a bug in some multi-touch device, ABS_MT_POSITION_X can be missing
+                   */
+                  console.log('ABS_MT_POSITION_Y', this.touchCoordinates, this.currentSlot);
                   let coor = this.touchCoordinates[this.currentSlot];
-                  if(coor){
-                    coor[coor.length-1].y = parseInt(e.value, 16);
+                  if(typeof coor === 'undefined'){
+                    console.error('ABS_MT_POSITION_X missing bug1');
+                    this.touchCoordinates[this.currentSlot] = [
+                      {
+                        x:parseInt(e.value, 16), //fake x
+                        y:parseInt(e.value, 16),
+                        t:e.time
+                      }
+                    ];
+                  }else if(typeof this.touchCoordinates[this.currentSlot][coor.length-1].x === 'undefined'){
+                    console.error('ABS_MT_POSITION_X missing bug2');
+                    this.touchCoordinates[this.currentSlot].push(
+                      {
+                        x:parseInt(e.value, 16), //fake x
+                        y:parseInt(e.value, 16),
+                        t:e.time
+                      }
+                    );
+                  }else{
+                    this.touchCoordinates[this.currentSlot][coor.length-1].y = parseInt(e.value, 16);
                   }
                   break;
                 default:
@@ -233,9 +260,11 @@ angular
               switch(e.code){
                 case 'SYN_REPORT':
                   if(['power_button_up', 'touch_finished'].indexOf(this.state) !== -1){
-                    // console.log('return to none state');
+                    console.log('return to none state');
                     this.state = 'none';
+                    console.log(this.eventsPack);
                     callback({state:this.state, eventsPack:this.eventsPack});
+                    this.eventsPack = [];
                   }
                   break;
                 default:

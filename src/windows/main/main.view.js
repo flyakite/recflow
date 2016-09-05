@@ -37,7 +37,7 @@ angular
       let projectSetting = vm.projectSettingCollection
         .findOne({
           '$and':[
-            {'name': defaultProject.class},
+            {'name': defaultProject.name},
             {'class': defaultProject.class}
           ]
         });
@@ -55,30 +55,15 @@ angular
         Storage.saveDatabase();
       }
       console.log(vm.projectSetting);
+      console.log(vm.projectSettingCollection.get(1));
 
       vm.testCases = Storage.getAll(TESTCASE.classname);
           // .chain().simplesort('order').data();
+          // 
+      // let tc = vm.testCaseCollection.findOne({id:805910966103})
+      //.get(805910966103);
+      // console.log(tc);
     });
-    // ProjectHelper.loadSetting({
-    //     projectName: defaultProjectName,
-    //   }).then(function(settings) {
-    //     // console.log('ProjectSettings', settings);
-    //     vm.projectSetting = settings;
-    //     $timeout(function() {
-    //       vm.testCaseDropdown();
-    //     });
-    // }, function(err) {
-    //   ProjectHelper.createSetting({
-    //     projectName: defaultProjectName,
-    //   }).then(function(settings) {
-    //     console.log('createSetting', settings);
-    //     vm.projectSetting = settings;
-    //     $timeout(function() {
-    //       vm.testCaseDropdown();
-    //     });
-    //   });
-
-    // });
     
     vm.testCaseDropdown = function() {
       $('.dropdown-button').dropdown({
@@ -130,7 +115,7 @@ angular
     vm.record = function() {
       vm.state.recording = true;
       vm.testCase = angular.copy(newTestCase);
-      vm.testCase.id = Generator.uuid4();
+      vm.testCase.tid = Generator.uuid4();
       const testCasesDir = path.resolve(app.getPath('userData'), TESTCASE_FOLDER);
       try{
         const stat = fs.statSync(testCasesDir);
@@ -138,7 +123,7 @@ angular
         console.error(e);
         fs.mkdirSync(testCasesDir);    
       }
-      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
+      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.tid);
       console.log(testCasePath);
       //add the initial step
       vm.testCase.steps.push({
@@ -178,19 +163,22 @@ angular
         return;
       }
       vm.testCase.name = vm.newTestCaseName;
-      vm.testCaseCollection.insert(vm.testCase);
-      Storage.saveDatabase();
-
+      vm.testCase = vm.testCaseCollection.insert(vm.testCase);
+      console.log(vm.testCase);
       vm.projectSetting.testCases = vm.projectSetting.testCases || [];
       vm.projectSetting.testCases.push({
-        id: vm.testCase.id,
+        id: vm.testCase.$loki,
+        tid: vm.testCase.tid,
         name: vm.testCase.name,
         order: vm.testCases.length
       });
+      console.log(vm.projectSetting.testCases);
       vm.projectSettingCollection.update(vm.projectSetting);
       $timeout(function() {
         vm.testCaseDropdown();
       });
+      Storage.saveDatabase();
+      $('#save-testcase').closeModal();
     };
 
     vm.deleteTestCase = function(testCaseID) {
@@ -207,20 +195,25 @@ angular
         }
       }
       vm.projectSettingCollection.update(vm.projectSetting);
+      Storage.saveDatabase();
     };
 
     vm.showTestCaseSteps = function(testCaseID) {
-      // const d = $q.defer();
+      console.log('testCaseID ', testCaseID);
+      const d = $q.defer();
       // TestCaseHelper.load(testCaseID, {testCaseFolder:TESTCASE_FOLDER}).then(function(testCase) {
       //   vm.testCase = testCase;
       //   d.resolve(vm.testCase);
       // });
-      // return d.promise;
       vm.testCase = vm.testCaseCollection.get(testCaseID);
+      console.log(vm.testCase); //null
+      d.resolve(vm.testCase);
+      return d.promise;
     };
 
     vm.testCaseStepTimeouts = [];
     vm.playbackTestCase = function(testCaseID) {
+      // console.log('testCaseID ', testCaseID);
       const d = $q.defer(), d2 = $q.defer();
       if(!vm.testCase || vm.testCase.id !== testCaseID){
         vm.showTestCaseSteps(testCaseID).then(function() {
@@ -231,32 +224,86 @@ angular
       }
       $q.when(d.promise).then(function() {
         const s1e0 = vm.testCase.steps[1].eventsPack[0];
-        let tcst, sie0, e, tcset;
+        let tcst, sie0, e, tcset, timeStolen=0;
         for(let i=0;i<vm.testCase.steps.length;i++){
           if(!vm.testCase.steps[i].eventsPack){
             //init or end
             //TODO: check screen
             // vm.testCase.steps[i].pass = true;
           }else{
-            (function(i) {
-              sie0 = vm.testCase.steps[i].eventsPack[0];
-              tcst = setTimeout(function() {
-                const e0 = vm.testCase.steps[i].eventsPack[0];
-                for(let j=0;j<vm.testCase.steps[i].eventsPack.length;j++){
-                  (function(i, j) {
-                    e = vm.testCase.steps[i].eventsPack[j];
+            //play raw event
+            // (function(i) {
+            //   sie0 = vm.testCase.steps[i].eventsPack[0];
+            //   tcst = setTimeout(function() {
+            //     const e0 = vm.testCase.steps[i].eventsPack[0];
+            //     for(let j=0;j<vm.testCase.steps[i].eventsPack.length;j++){
+            //       (function(i, j) {
+            //         e = vm.testCase.steps[i].eventsPack[j];
+            //         tcset = setTimeout(function() {
+            //           e = vm.testCase.steps[i].eventsPack[j]; //renew
+            //           // console.log(i,j,e);
+            //           // console.log('send ', e);
+            //           adb.sendEvent(e);
+            //         }, (e.time - e0.time)*1000);
+            //         vm.testCaseStepTimeouts.push(tcset);
+            //       })(i, j)
+            //     }
+            //   }, (sie0.time - s1e0.time)*1000);
+            //   vm.testCaseStepTimeouts.push(tcst);
+            // })(i);
+            //play events by event blocks(if two events happened adjasent, play them together)
+            // (function(i) {
+              // console.log('====== ' + i + ' ======');
+              // console.log(vm.testCase.steps[i].eventsPack);
+              let eventBlock = [vm.testCase.steps[i].eventsPack[0]];
+              let eventBlockStartTime = eventBlock[0].time - s1e0.time;
+              // console.log('storing ' + vm.testCase.steps[i].eventsPack[0].raw);
+              for(let j=1;j<vm.testCase.steps[i].eventsPack.length;j++){
+                //execute the event block if the there's a time gap(100 milliseconds), 
+                //or if the event block is big(>6 events)
+                if((vm.testCase.steps[i].eventsPack[j].time - 
+                  vm.testCase.steps[i].eventsPack[j-1].time)*1000 > 100 ||
+                  (eventBlock.length > 10 && vm.testCase.steps[i].eventsPack[j-1].code == 'SYN_REPORT')
+                  ){
+                  (function(eventBlock, eventBlockStartTime) {
                     tcset = setTimeout(function() {
-                      e = vm.testCase.steps[i].eventsPack[j]; //renew
-                      // console.log(i,j,e);
-                      // console.log('send ', e);
-                      adb.sendEvent(e);
-                    }, (e.time - e0.time)*1000);
+                      console.log('========eventBlock======== ');
+                      for(var k=0; k<eventBlock.length; k++){
+                        e = eventBlock[k];
+                        console.log('executing ' + e.raw);
+                        //ECONNRESET error means too many events sent at the same time
+                        adb.sendEvent(e);
+                      }
+                      // adb.sendEventBlock(eventBlock);
+                    // }, (eventBlock[0].time - s1e0.time)*1000);
+                    }, eventBlockStartTime*1000);
                     vm.testCaseStepTimeouts.push(tcset);
-                  })(i, j)
+                  })(eventBlock, eventBlockStartTime);
+                  eventBlockStartTime = eventBlockStartTime + 
+                    vm.testCase.steps[i].eventsPack[j].time - eventBlock[0].time;
+                  eventBlock = [];
                 }
-              }, (sie0.time - s1e0.time)*1000);
-              vm.testCaseStepTimeouts.push(tcst);
-            })(i);
+                // console.log('storing ' + vm.testCase.steps[i].eventsPack[j].raw);
+                eventBlock.push(vm.testCase.steps[i].eventsPack[j]);
+              }
+
+              if(eventBlock.length != 0){
+                (function(eventBlock, eventBlockStartTime) {
+                  tcset = setTimeout(function() {
+                    console.log('======== remaining eventBlock======== ');
+                    for(var k=0;k<eventBlock.length;k++){
+                      e = eventBlock[k];
+                      console.log('executing ' + e.raw);
+                      adb.sendEvent(e);
+                    }
+                    // adb.sendEventBlock(eventBlock);
+                  // }, (eventBlock[0].time - s1e0.time)*1000);
+                  }, (eventBlockStartTime)*1000);
+                  vm.testCaseStepTimeouts.push(tcset);
+                })(eventBlock, eventBlockStartTime);
+                eventBlock = [];
+              }
+            // })(i);
           }
         }
       });
@@ -264,7 +311,7 @@ angular
 
     vm.takeScreenShot = function(option) {
       const screenshotFilename = option.name || Generator.uuid4() + '.png';
-      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.id);
+      const testCasePath = path.resolve(app.getPath('userData'), TESTCASE_FOLDER, vm.testCase.tid);
       const screenshotFilePath = path.resolve(testCasePath, screenshotFilename);
       (function(stepIndex, screenshotFilePath){
         adb.takeScreenshot(screenshotFilePath, function() {
@@ -295,6 +342,8 @@ angular
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
                   break;
                 case 'power_button_up':
+                  console.log(vm.testCase.steps);
+                  console.log(stepIndex);
                   vm.testCase.steps[stepIndex].name = 'Power Pressed';
                   break;
                 case 'touch_first':
@@ -315,6 +364,10 @@ angular
                     ){
                     vm.testCase.steps[stepIndex].name = 'Swipe';
                     vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                    vm.testCase.steps[stepIndex].input = `swipe ${es.touchCoordinates[FIRST_TOUCH][0].x} ${es.touchCoordinates[FIRST_TOUCH][0].y} ` + 
+                      `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x} ` + 
+                      `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y} ` +
+                      `${(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].time - es.touchCoordinates[FIRST_TOUCH][0].time)*1000}`
 
                   }else if(es.touchCoordinates[FIRST_TOUCH] && (es.duration) > 1 ){
 
@@ -355,34 +408,34 @@ angular
     };
 
     //temp easy testing code
-    vm.test = function() {
-      var testCase = angular.copy(newTestCase);
-      testCase.name = "test";
-      testCase.steps.push({
-        sid: 'test',
-        name: 'Initial Screen',
-      });
-      // Pouch.save(testCase, TESTCASE.classname)
-      // .then(function(result) {
-      //   console.log(result);
-      //   return Pouch.get_by_id(result.id);
-      // }).then(function(result) {
-      //   console.log(result);
-      //   return Pouch.remove(result);
-      // });
-      // Storage.ready().then(function() {
-      //   let testCaseCollection = Storage.getCollection(TESTCASE.classname);
-      //   testCaseCollection.insert(testCase);
-      //   // Storage.saveDatabase();
-      //   let tc = testCaseCollection.findOne({'name':'test'});
-      //   assert.notEqual(tc, null);
-      //   testCaseCollection.remove(testCase);
-      //   // Storage.saveDatabase();
-      //   tc = testCaseCollection.findOne({'name':'test'});
-      //   assert.equal(tc, null);
-      //   console.log('Storage test finished');
-      // });
+    // vm.test = function() {
+    //   var testCase = angular.copy(newTestCase);
+    //   testCase.name = "test";
+    //   testCase.steps.push({
+    //     sid: 'test',
+    //     name: 'Initial Screen',
+    //   });
+    //   // Pouch.save(testCase, TESTCASE.classname)
+    //   // .then(function(result) {
+    //   //   console.log(result);
+    //   //   return Pouch.get_by_id(result.id);
+    //   // }).then(function(result) {
+    //   //   console.log(result);
+    //   //   return Pouch.remove(result);
+    //   // });
+    //   // Storage.ready().then(function() {
+    //   //   let testCaseCollection = Storage.getCollection(TESTCASE.classname);
+    //   //   testCaseCollection.insert(testCase);
+    //   //   // Storage.saveDatabase();
+    //   //   let tc = testCaseCollection.findOne({'name':'test'});
+    //   //   assert.notEqual(tc, null);
+    //   //   testCaseCollection.remove(testCase);
+    //   //   // Storage.saveDatabase();
+    //   //   tc = testCaseCollection.findOne({'name':'test'});
+    //   //   assert.equal(tc, null);
+    //   //   console.log('Storage test finished');
+    //   // });
 
-    }
-    vm.test();
+    // }
+    // vm.test();
   }]);
