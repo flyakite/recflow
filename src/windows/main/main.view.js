@@ -325,86 +325,93 @@ angular
 
     vm.recordDeviceEvents = function() {
       let stepIndex = 1; //start from 1 because 0 is for init step
-      // recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt']);
-      // recordingProcess.stdout.on('data', function(data) {
+
       DeviceEventHelper.init();
-      adb.getEvents(function(data) {
-        DeviceEventHelper
-          .chopRawEvents(data.toString(), function(e) {
-            vm.testCase.rawEvents.push(e.raw);
-            if(e.error) return
+      adb.getEvents()
+      .then(function(data) {
 
-            DeviceEventHelper.handleChoppedEvent(e, function(es) {
-              console.log(es.state);
-              const FIRST_TOUCH = 0;
-              switch(es.state){
-                case 'power_button_down':
+        return DeviceEventHelper
+          .chopRawEvents(data.toString());
+      })
+      .then(
+        function(success) {}, 
+        function(err) {console.error(err);},
+        function(e) {
+          console.log('update function');
+          vm.testCase.rawEvents.push(e.raw);
+          if(e.error) return;
+
+          DeviceEventHelper.handleChoppedEvent(e)
+          .then(function(es) {
+            console.log(es.state);
+            const FIRST_TOUCH = 0;
+            switch(es.state){
+              case 'power_button_down':
+                vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
+                break;
+              case 'power_button_up':
+                console.log(vm.testCase.steps);
+                console.log(stepIndex);
+                vm.testCase.steps[stepIndex].name = 'Power Pressed';
+                break;
+              case 'touch_first':
+                vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
+                vm.takeScreenShot({stepIndex:stepIndex});
+                break;
+              case 'touch_finished':
+                console.log('touch_finished touchCoordinates', es.touchCoordinates);
+                if(Object.keys(es.touchCoordinates).length > 1){
+                  vm.testCase.steps[stepIndex].name = 'Multi-Touch';
+                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+
+                }else if(es.touchCoordinates[FIRST_TOUCH] && es.touchCoordinates[FIRST_TOUCH].length > 1 &&
+                  (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x - 
+                    es.touchCoordinates[FIRST_TOUCH][0].x)) > 10 ||
+                  (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y - 
+                    es.touchCoordinates[FIRST_TOUCH][0].y)) > 10
+                  ){
+                  vm.testCase.steps[stepIndex].name = 'Swipe';
+                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                  vm.testCase.steps[stepIndex].input = `swipe ${es.touchCoordinates[FIRST_TOUCH][0].x} ${es.touchCoordinates[FIRST_TOUCH][0].y} ` + 
+                    `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x} ` + 
+                    `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y} ` +
+                    `${(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].time - es.touchCoordinates[FIRST_TOUCH][0].time)*1000}`
+
+                }else if(es.touchCoordinates[FIRST_TOUCH] && (es.duration) > 1 ){
+
+                  // vm.testCase.steps[stepIndex].displayArea = {
+                  //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
+                  //   y:es.touchCoordinates[FIRST_TOUCH][0].y
+                  // };
+                  vm.testCase.steps[stepIndex].name = 'Long Press';
+                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                }else{
+                  // vm.testCase.steps[stepIndex].displayArea = {
+                  //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
+                  //   y:es.touchCoordinates[FIRST_TOUCH][0].y
+                  // };
+                  vm.testCase.steps[stepIndex].name = 'Touch';
+                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                  
+                }
+                console.log(vm.testCase.steps[stepIndex]);
+                break;
+              case 'none':
+                console.log('none');
+                //events finished, go back to none state
+                if(typeof es.eventsPack !== 'undefined'){
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
-                  break;
-                case 'power_button_up':
-                  console.log(vm.testCase.steps);
-                  console.log(stepIndex);
-                  vm.testCase.steps[stepIndex].name = 'Power Pressed';
-                  break;
-                case 'touch_first':
-                  vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
-                  vm.takeScreenShot({stepIndex:stepIndex});
-                  break;
-                case 'touch_finished':
-                  console.log('touch_finished touchCoordinates', es.touchCoordinates);
-                  if(Object.keys(es.touchCoordinates).length > 1){
-                    vm.testCase.steps[stepIndex].name = 'Multi-Touch';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-
-                  }else if(es.touchCoordinates[FIRST_TOUCH] && es.touchCoordinates[FIRST_TOUCH].length > 1 &&
-                    (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x - 
-                      es.touchCoordinates[FIRST_TOUCH][0].x)) > 10 ||
-                    (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y - 
-                      es.touchCoordinates[FIRST_TOUCH][0].y)) > 10
-                    ){
-                    vm.testCase.steps[stepIndex].name = 'Swipe';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                    vm.testCase.steps[stepIndex].input = `swipe ${es.touchCoordinates[FIRST_TOUCH][0].x} ${es.touchCoordinates[FIRST_TOUCH][0].y} ` + 
-                      `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x} ` + 
-                      `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y} ` +
-                      `${(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].time - es.touchCoordinates[FIRST_TOUCH][0].time)*1000}`
-
-                  }else if(es.touchCoordinates[FIRST_TOUCH] && (es.duration) > 1 ){
-
-                    // vm.testCase.steps[stepIndex].displayArea = {
-                    //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                    //   y:es.touchCoordinates[FIRST_TOUCH][0].y
-                    // };
-                    vm.testCase.steps[stepIndex].name = 'Long Press';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                  }else{
-                    // vm.testCase.steps[stepIndex].displayArea = {
-                    //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                    //   y:es.touchCoordinates[FIRST_TOUCH][0].y
-                    // };
-                    vm.testCase.steps[stepIndex].name = 'Touch';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                    
-                  }
-                  console.log(vm.testCase.steps[stepIndex]);
-                  break;
-                case 'none':
-                  console.log('none');
-                  //events finished, go back to none state
-                  if(typeof es.eventsPack !== 'undefined'){
-                    vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
-                    vm.testCase.steps[stepIndex].eventsPack = es.eventsPack;
-                  }
-                  stepIndex++;
-                  break;
-                default:
-                  // console.log(e);
-              }
-              $scope.$apply();
-            });
-        });
-      });
-
+                  vm.testCase.steps[stepIndex].eventsPack = es.eventsPack;
+                }
+                stepIndex++;
+                break;
+              default:
+                // console.log(e);
+            }
+            $scope.$apply();
+          });
+        }
+      );
     };
 
     //temp easy testing code

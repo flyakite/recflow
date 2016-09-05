@@ -103,7 +103,7 @@ angular
   //   };
   // }])
   .service('DeviceEventHelper', ['$q', function($q) {
-    console.log('DeviceEventHelper');
+    // console.log('DeviceEventHelper');
     this.state = 'none';
     this.touchNumber = 0;
     this.buffer = [];
@@ -112,7 +112,7 @@ angular
     this.eventsPack = [];
     this.touchDuration = [];
     this.init = function() {
-      console.log('DeviceEventHelper init');
+      // console.log('DeviceEventHelper init');
       this.state = 'none';
       this.touchNumber = 0;
       this.buffer = [];
@@ -122,7 +122,7 @@ angular
       this.touchDuration = [];
       return this;
     };
-    this.handleChoppedEvent = function(e, callback) {
+    this.handleChoppedEvent = function(e) {
       /**
        * a event looks like
        * {
@@ -133,6 +133,7 @@ angular
        *   time: '57988.493168'
        * }
        */
+      let d = $q.defer();
       this.eventsPack.push(e);
       switch(this.state) {
 
@@ -144,10 +145,10 @@ angular
                 case 'KEY_POWER':
                   if(e.value == 'DOWN'){
                     this.state = 'power_button_down';
-                    callback({state:this.state});
+                    d.resolve({state:this.state});
                   }else if(e.value == 'UP'){
                     this.state = 'power_button_up';
-                    callback({state:this.state});
+                    d.resolve({state:this.state});
                   }
                   break;
                 case 'BTN_TOUCH':
@@ -166,14 +167,14 @@ angular
                     if(this.touchNumber === 0){
                       this.state = 'touch_first';
                       this.touchNumber++;
-                      callback({
+                      d.resolve({
                         state:this.state, 
                         time:e.time
                       });
                     }else{
                       this.state = 'touch_multi';
                       this.touchNumber++;
-                      callback({
+                      d.resolve({
                         state:this.state, 
                         touchNumber:this.touchNumber, 
                         time:e.time
@@ -191,7 +192,7 @@ angular
                     if(this.touchNumber === 0){
                       this.state = 'touch_finished';
                       console.log(this.touchDuration[this.touchNumber]);
-                      callback({
+                      d.resolve({
                         state:this.state, 
                         touchCoordinates:this.touchCoordinates, 
                         time:e.time,
@@ -200,7 +201,7 @@ angular
                       this.touchCoordinates = {};
                     }else{
                       this.state = 'touch_up';
-                      callback({
+                      d.resolve({
                         state:this.state,
                         touchNumber:this.touchNumber, 
                         time:e.time,
@@ -263,7 +264,7 @@ angular
                     console.log('return to none state');
                     this.state = 'none';
                     console.log(this.eventsPack);
-                    callback({state:this.state, eventsPack:this.eventsPack});
+                    d.resolve({state:this.state, eventsPack:this.eventsPack});
                     this.eventsPack = [];
                   }
                   break;
@@ -275,11 +276,11 @@ angular
               console.log(e.type);
           }
       }
-      return this;
+      return d.promise;
     };//receive
 
     this.eventRawEventRegex = /\s*?\[\s*?(\d+\.\d+)\s*?\]\s*?\/dev\/input\/(event\d+)\:\s+?(EV_\w+)\s+?(\w+)\s+?(\w+)\s*/;
-    this.chopRawEvents = function(event_string, callback) {
+    this.chopRawEvents = function(event_string) {
       /**
        * a event looks like
        * {
@@ -290,11 +291,12 @@ angular
        *   time: '57988.493168'
        * }
        */
+      let d = $q.defer();
       let match, events = event_string.split('\n');
       for(var i=0; i<events.length; i++){
         match = this.eventRawEventRegex.exec(events[i]);
         if(match && match.length > 0){
-          callback({
+          d.notify({
             time: parseFloat(match[1]),
             input: match[2],
             type: match[3],
@@ -303,13 +305,14 @@ angular
             raw: events[i].trim()
           });
         }else{
-          callback({
+          d.notify({
             error: true,
             raw: events[i].trim()
           });
         }
       }
-      return this;
+      d.resolve();
+      return d.promise;
     };
 
   }])

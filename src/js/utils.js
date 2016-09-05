@@ -290,9 +290,13 @@ angular
       return $q.all([d1.promise, d2.promise]);
     };
     
-    this.getEvents = function(callback) {
+    this.getEvents = function() {
+      let d = $q.defer();
       this.recordingProcess = childProcess.execFile('adb', ['shell', 'getevent', '-lt' ]);
-      this.recordingProcess.stdout.on('data', callback);
+      this.recordingProcess.stdout.on('data', function(data) {
+        d.resolve(data);
+      });
+      return d.promise;
     };
     this.stopGetEvents = function() {
       this.recordingProcess && this.recordingProcess.kill();
