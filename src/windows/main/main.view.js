@@ -226,7 +226,10 @@ angular
         const s1e0 = vm.testCase.steps[1].eventsPack[0];
         let tcst, sie0, e, tcset, timeStolen=0;
         for(let i=0;i<vm.testCase.steps.length;i++){
-          if(!vm.testCase.steps[i].eventsPack){
+          //step translation
+          if(typeof vm.testCase.steps[i].touchType){
+
+          }else if(!vm.testCase.steps[i].eventsPack){
             //init or end
             //TODO: check screen
             // vm.testCase.steps[i].pass = true;
@@ -327,32 +330,26 @@ angular
       let stepIndex = 1; //start from 1 because 0 is for init step
 
       DeviceEventHelper.init();
-      adb.getEvents()
-      .then(function(data) {
-
+      adb.getEvents(function(data) {
         return DeviceEventHelper
-          .chopRawEvents(data.toString());
-      })
-      .then(
-        function(success) {}, 
-        function(err) {console.error(err);},
-        function(e) {
-          console.log('update function');
+          .chopRawEvents(data.toString(), function(e) {
           vm.testCase.rawEvents.push(e.raw);
           if(e.error) return;
 
           DeviceEventHelper.handleChoppedEvent(e)
           .then(function(es) {
             console.log(es.state);
-            const FIRST_TOUCH = 0;
             switch(es.state){
               case 'power_button_down':
                 vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
                 break;
               case 'power_button_up':
+                //TODO: power long press unhandled
+                //http://stackoverflow.com/questions/11338022/simulating-power-button-press-to-display-switch-off-dialog-box
                 console.log(vm.testCase.steps);
                 console.log(stepIndex);
                 vm.testCase.steps[stepIndex].name = 'Power Pressed';
+                vm.testCase.steps[stepIndex].shell_input = 'keyevent 26';
                 break;
               case 'touch_first':
                 vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
@@ -360,45 +357,30 @@ angular
                 break;
               case 'touch_finished':
                 console.log('touch_finished touchCoordinates', es.touchCoordinates);
-                if(Object.keys(es.touchCoordinates).length > 1){
-                  vm.testCase.steps[stepIndex].name = 'Multi-Touch';
-                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-
-                }else if(es.touchCoordinates[FIRST_TOUCH] && es.touchCoordinates[FIRST_TOUCH].length > 1 &&
-                  (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x - 
-                    es.touchCoordinates[FIRST_TOUCH][0].x)) > 10 ||
-                  (Math.abs(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y - 
-                    es.touchCoordinates[FIRST_TOUCH][0].y)) > 10
-                  ){
-                  vm.testCase.steps[stepIndex].name = 'Swipe';
-                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                  vm.testCase.steps[stepIndex].input = `swipe ${es.touchCoordinates[FIRST_TOUCH][0].x} ${es.touchCoordinates[FIRST_TOUCH][0].y} ` + 
-                    `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].x} ` + 
-                    `${es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].y} ` +
-                    `${(es.touchCoordinates[FIRST_TOUCH][es.touchCoordinates[FIRST_TOUCH].length-1].time - es.touchCoordinates[FIRST_TOUCH][0].time)*1000}`
-
-                }else if(es.touchCoordinates[FIRST_TOUCH] && (es.duration) > 1 ){
-
-                  // vm.testCase.steps[stepIndex].displayArea = {
-                  //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                  //   y:es.touchCoordinates[FIRST_TOUCH][0].y
-                  // };
-                  vm.testCase.steps[stepIndex].name = 'Long Press';
-                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                }else{
-                  // vm.testCase.steps[stepIndex].displayArea = {
-                  //   x:es.touchCoordinates[FIRST_TOUCH][0].x,
-                  //   y:es.touchCoordinates[FIRST_TOUCH][0].y
-                  // };
-                  vm.testCase.steps[stepIndex].name = 'Touch';
-                  vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                  
+                console.log('touch_finished touchCoordinates', es.anchorTouchCoordinates);
+                vm.testCase.steps[stepIndex].touchCoordinates = es.touchCoordinates;
+                vm.testCase.steps[stepIndex].anchorTouchCoordinates = es.anchorTouchCoordinates;
+                switch(es.touchType){
+                  case 'multi-touch':
+                    vm.testCase.steps[stepIndex].name = 'Multi-Touch';
+                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                    break;
+                  case 'swipe':
+                    vm.testCase.steps[stepIndex].name = 'Swipe';
+                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                    break;
+                  case 'long-press':
+                    vm.testCase.steps[stepIndex].name = 'Long Press';
+                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
+                    break;
+                  default:
+                    vm.testCase.steps[stepIndex].name = 'Touch';
+                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
                 }
-                console.log(vm.testCase.steps[stepIndex]);
                 break;
               case 'none':
-                console.log('none');
                 //events finished, go back to none state
+                console.log('none');
                 if(typeof es.eventsPack !== 'undefined'){
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
                   vm.testCase.steps[stepIndex].eventsPack = es.eventsPack;
@@ -406,12 +388,12 @@ angular
                 stepIndex++;
                 break;
               default:
-                // console.log(e);
+                console.log(e);
             }
-            $scope.$apply();
+            // $scope.$apply();
           });
-        }
-      );
+        });
+      });
     };
 
     //temp easy testing code
