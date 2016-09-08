@@ -108,19 +108,19 @@ angular
     this.touchNumber = 0;
     this.coorIndex = 0;
     this.buffer = [];
-    this.touchCoordinates = {};
+    this.touchTrackEvents = {};
     this.currentSlot = 0;
     this.eventsPack = [];
-    this.touchDuration = [];
+    // this.touchDuration = [];
     this.init = function() {
       // console.log('DeviceEventHelper init');
       this.state = 'none';
       this.touchNumber = 0;
       this.buffer = [];
-      this.touchCoordinates = {};
+      this.touchTrackEvents = {};
       this.currentSlot = 0;
       this.eventsPack = [];
-      this.touchDuration = [];
+      // this.touchDuration = [];
       return this;
     };
 
@@ -128,33 +128,40 @@ angular
       /**
        * touchInfo t:
        * state:this.state, 
-       * touchCoordinates:this.touchCoordinates, 
+       * touchTrackEvents:this.touchTrackEvents, 
        * time:e.time,
        * duration: duration
        */
       const FIRST_FINGER = 0;
       let touch = {
-        anchorTouchCoordinates: {},
-        touchCoordinates: undefined,
+        anchorTouchTrackEvents: {},
+        touchTrackEvents: t.touchTrackEvents,
         type: undefined,
       };
+      // let lastTrackPointIndex;
+      // for(let i=t.touchTrackEvents[FIRST_FINGER].length;i--;){
+      //   if(typeof t.touchTrackEvents[FIRST_FINGER][i].y !== 'undefined'){
+      //     lastTrackPointIndex = i;
+      //     break;
+      //   }
+      // }
 
-      if(Object.keys(t.touchCoordinates).length > 1){
+      if(Object.keys(t.touchTrackEvents).length > 1){
         touch.type = 'multi-touch';
-        Object.keys(t.touchCoordinates).forEach(function(k) {
-          touch.anchorTouchCoordinates[k] = this.findAnchorPoints(t.touchCoordinates[k]);
-        }).bind(this);
+        Object.keys(t.touchTrackEvents).forEach(function(k) {
+          touch.anchorTouchTrackEvents[k] = this.findAnchorPoints(t.touchTrackEvents[k]);
+        }.bind(this));
 
-      }else if(t.touchCoordinates[FIRST_FINGER] && t.touchCoordinates[FIRST_FINGER].length > 1 &&
-        (Math.abs(t.touchCoordinates[FIRST_FINGER][t.touchCoordinates[FIRST_FINGER].length-1].x - 
-          t.touchCoordinates[FIRST_FINGER][0].x)) > 10 ||
-        (Math.abs(t.touchCoordinates[FIRST_FINGER][t.touchCoordinates[FIRST_FINGER].length-1].y - 
-          t.touchCoordinates[FIRST_FINGER][0].y)) > 10
+      }else if(t.touchTrackEvents[FIRST_FINGER] && t.touchTrackEvents[FIRST_FINGER].lastTrackPointIndex > 1 &&
+        (Math.abs(t.touchTrackEvents[FIRST_FINGER][t.touchTrackEvents[FIRST_FINGER].lastTrackPointIndex].x - 
+          t.touchTrackEvents[FIRST_FINGER][0].x)) > 10 ||
+        (Math.abs(t.touchTrackEvents[FIRST_FINGER][t.touchTrackEvents[FIRST_FINGER].lastTrackPointIndex].y - 
+          t.touchTrackEvents[FIRST_FINGER][0].y)) > 10
         ){
         touch.type = 'swipe';
-        touch.anchorTouchCoordinates[FIRST_FINGER] = this.findAnchorPoints(t.touchCoordinates[FIRST_FINGER]);
+        touch.anchorTouchTrackEvents[FIRST_FINGER] = this.findAnchorPoints(t.touchTrackEvents[FIRST_FINGER]);
 
-      }else if(t.touchCoordinates[FIRST_FINGER] && (t.duration) > 1 ){
+      }else if(t.touchTrackEvents[FIRST_FINGER] && (t.duration) > 1 ){
         touch.type = 'long-press';
       }else{
         touch.type = 'touch';
@@ -205,12 +212,56 @@ angular
       //add last point
       newpoints.push(points[points.length-1]);
       return newpoints;
-    }
+    };
 
+    this.groupEventsByCoordinates = function(eventsPack) {
+      let e, trackEvents={}, track={}, slot=0;
+      track.eventsPack = [];
+      for(var i=0;i<eventsPack.length;i++){
+        e = eventsPack[i];
+        track.eventsPack.push(e);
+        switch(e.code){
+          case 'ABS_MT_SLOT':
+            slot = parseInt(e.value, 16);
+            trackEvents[slot] = trackEvents[slot] || [];
+            break;
+          case 'ABS_MT_POSITION_X':
+            track.x = parseInt(e.value, 16);
+            break;
+          case 'ABS_MT_POSITION_Y':
+            track.y = parseInt(e.value, 16);
+            trackEvents[slot] = trackEvents[slot] || [];
+            trackEvents[slot].lastTrackPointIndex = trackEvents[slot].length - 1 ;
+            break;
+          case 'SYN_REPORT':
+            track.t = parseInt(e.time, 16);
+            trackEvents[slot].push(track);
+            track={};
+            track.eventsPack = []
+            break;
+          default:
+            break;
+        }
+      }
+      return trackEvents;
+    };
 
-    this.findAnchorPoints = function(points) {
+    this.findAnchorPoints = function(trackEvents) {
+      // let points = [];
+      //detatch last event(touch up event)
+      // for(let slot=0;slot<trackEvents.length;slot++){
+      //   console.log(trackEvents[slot]);
+      //   points[slot] = trackEvents[slot].splice(0,trackEvents[slot].length-1);
+      // }
+      let points = trackEvents.slice(0,trackEvents.length-1);
       points = this.screenClosePoints(points);
       points = this.screenInTheMiddlePoints(points, 0.9);
+
+      //attach back the last event
+      // for(let slot=0;slot<trackEvents.length;slot++){
+      //   points[slot].push(trackEvents[slot][trackEvents[slot].length-1]);
+      // }
+      points.push(trackEvents[trackEvents.length-1]);
       return points;
     };
 
@@ -256,7 +307,7 @@ angular
                   console.log('touchNumber ', this.touchNumber);
                   if(e.value !== 'ffffffff'){
                     //new touch
-                    this.touchDuration[this.touchNumber] = {start:e.time};
+                    // this.touchDuration[this.touchNumber] = {start:e.time};
                     if(this.touchNumber === 0){
                       this.state = 'touch_first';
                       this.touchNumber++;
@@ -276,89 +327,63 @@ angular
                   }else{
                     //end of tracking a touch
                     this.touchNumber--;
-                    this.touchDuration[this.touchNumber] = this.touchDuration[this.touchNumber] || {};
-                    let duration = this.touchDuration[this.touchNumber];
-                    duration.end = e.time;
-                    if(duration.start){
-                      duration.duration = duration.end - duration.start;
-                    }
                     if(this.touchNumber === 0){
                       this.state = 'touch_finished';
-                      console.log(this.touchDuration[this.touchNumber]);
-                      touch = this.catagorizeTouchType({
-                        touchCoordinates:this.touchCoordinates,
-                        duration: duration.duration
-                      });
-                      d.resolve({
-                        state:this.state, 
-                        touchType:touch.type,
-                        touchCoordinates:this.touchCoordinates,
-                        anchorTouchCoordinates:touch.anchorTouchCoordinates,
-                        time:e.time,
-                        duration: duration.duration
-                      });
-                      this.touchCoordinates = {};
                     }else{
                       this.state = 'touch_up';
-                      d.resolve({
-                        state:this.state,
-                        touchNumber:this.touchNumber, 
-                        time:e.time,
-                        duration: duration.duration
-                      });  
                     }
                   }
                   break;
-                case 'ABS_MT_SLOT':
-                  this.currentSlot = parseInt(e.value);
-                  this.touchCoordinates[this.currentSlot] = this.touchCoordinates[this.currentSlot] || [];
-                  this.touchCoordinates[this.currentSlot].push({
-                    eventsPack: []
-                  });
-                  this.coorIndex = this.touchCoordinates[this.currentSlot].length - 1;
-                  this.touchCoordinates[this.currentSlot][this.coorIndex].eventsPack.push(e);
-                  break;
-                case 'ABS_MT_TOUCH_MAJOR':
-                  this.touchCoordinates[this.currentSlot] = this.touchCoordinates[this.currentSlot] || [];
-                  if(this.touchCoordinates[this.currentSlot].length == 0 ||
-                   typeof this.touchCoordinates[this.currentSlot][this.touchCoordinates[this.currentSlot].lengh-1].x === 'undefined'){
-                    this.touchCoordinates[this.currentSlot].push({
-                      eventsPack: []
-                    });
-                    this.coorIndex = this.touchCoordinates[this.currentSlot].length - 1;
-                  }
-                  this.touchCoordinates[this.currentSlot][this.coorIndex].eventsPack.push(e);
-                  break;
-                case 'ABS_MT_WIDTH_MAJOR':
-                  this.touchCoordinates[this.currentSlot][this.coorIndex].eventsPack.push(e);
-                  break;
-                case 'ABS_MT_POSITION_X':
-                  console.log('ABS_MT_POSITION_X', this.touchCoordinates);
-                  this.touchCoordinates[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16);
-                  this.touchCoordinates[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
-                  break;
-                case 'ABS_MT_POSITION_Y':
-                  /**
-                   * There's a bug in some multi-touch device, ABS_MT_POSITION_X can be missing
-                   */
-                  console.log('ABS_MT_POSITION_Y', this.touchCoordinates, this.currentSlot);
-                  let coor = this.touchCoordinates[this.currentSlot];
-                  if(typeof coor === 'undefined'){
-                    console.error('ABS_MT_POSITION_X missing bug1');
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16); //fake x
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
+                // case 'ABS_MT_SLOT':
+                //   this.currentSlot = parseInt(e.value);
+                //   this.touchTrackEvents[this.currentSlot] = this.touchTrackEvents[this.currentSlot] || [];
+                //   this.touchTrackEvents[this.currentSlot].push({
+                //     // eventsPack: []
+                //   });
+                //   this.coorIndex = this.touchTrackEvents[this.currentSlot].length - 1;
+                //   this.touchTrackEvents[this.currentSlot][this.coorIndex].eventsPack.push(e);
+                //   break;
+                // case 'ABS_MT_TOUCH_MAJOR':
+                //   this.touchTrackEvents[this.currentSlot] = this.touchTrackEvents[this.currentSlot] || [];
+                //   if(this.touchTrackEvents[this.currentSlot].length == 0 ||
+                //    typeof this.touchTrackEvents[this.currentSlot][this.touchTrackEvents[this.currentSlot].lengh-1].x === 'undefined'){
+                //     this.touchTrackEvents[this.currentSlot].push({
+                //       // eventsPack: []
+                //     });
+                //     this.coorIndex = this.touchTrackEvents[this.currentSlot].length - 1;
+                //   }
+                //   // this.touchTrackEvents[this.currentSlot][this.coorIndex].eventsPack.push(e);
+                //   break;
+                // case 'ABS_MT_WIDTH_MAJOR':
+                //   // this.touchTrackEvents[this.currentSlot][this.coorIndex].eventsPack.push(e);
+                //   break;
+                // case 'ABS_MT_POSITION_X':
+                //   console.log('ABS_MT_POSITION_X', this.touchTrackEvents);
+                //   this.touchTrackEvents[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16);
+                //   this.touchTrackEvents[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
+                //   break;
+                // case 'ABS_MT_POSITION_Y':
+                //   /**
+                //    * There's a bug in some multi-touch device, ABS_MT_POSITION_X can be missing
+                //    */
+                //   console.log('ABS_MT_POSITION_Y', this.touchTrackEvents, this.currentSlot);
+                //   let coor = this.touchTrackEvents[this.currentSlot];
+                //   if(typeof coor === 'undefined'){
+                //     console.error('ABS_MT_POSITION_X missing bug1');
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16); //fake x
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
 
-                  }else if(typeof this.touchCoordinates[this.currentSlot][coor.length-1].x === 'undefined'){
-                    console.error('ABS_MT_POSITION_X missing bug2');
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16); //fake x
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
+                //   }else if(typeof this.touchTrackEvents[this.currentSlot][coor.length-1].x === 'undefined'){
+                //     console.error('ABS_MT_POSITION_X missing bug2');
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].x = parseInt(e.value, 16); //fake x
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].t = parseInt(e.time, 16);
 
-                  }else{
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
-                  }
-                  break;
+                //   }else{
+                //     this.touchTrackEvents[this.currentSlot][this.coorIndex].y = parseInt(e.value, 16);
+                //   }
+                //   break;
                 default:
                   // console.log(e.code);
               }
@@ -369,14 +394,41 @@ angular
                   //TODO: add more senarios, when to clear eventsPack
                   if(['power_button_up', 'touch_finished'].indexOf(this.state) !== -1){
                     console.log('return to none state');
+                    if(this.state == 'touch_finished'){
+                      // console.log(this.eventsPack);
+                      let touchTrackEvents = this.groupEventsByCoordinates(this.eventsPack);
+                      // console.log(touchTrackEvents);
+                      let duration = this.eventsPack[this.eventsPack.length-1].time - this.eventsPack[0].time
+                      // console.log(duration);
+                      touch = this.catagorizeTouchType({
+                        touchTrackEvents:touchTrackEvents,
+                        duration: duration
+                      });
+                      // console.log(touch);
+                      d.resolve({
+                        state:'none',
+                        fromState:this.state,
+                        touchType:touch.type,
+                        touchTrackEvents:touchTrackEvents,
+                        anchorTouchTrackEvents:touch.anchorTouchTrackEvents,
+                        time:e.time,
+                        eventsPack:this.eventsPack,
+                        duration: duration
+                      });
+                      // touchTrackEvents = {};
+                    }else{
+                      d.resolve({
+                        state:'none', 
+                        fromState:this.state,
+                        eventsPack:this.eventsPack
+                      });
+                    }
                     this.state = 'none';
-                    console.log(this.eventsPack);
-                    d.resolve({state:this.state, eventsPack:this.eventsPack});
                     this.eventsPack = [];
-                  }else if(this.touchCoordinates && 
-                    typeof this.touchCoordinates[this.currentSlot][this.coorIndex].sync === 'undefined'){
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].eventsPack.push(e);
-                    this.touchCoordinates[this.currentSlot][this.coorIndex].sync = true;
+                  // }else if(this.touchTrackEvents && 
+                  //   typeof this.touchTrackEvents[this.currentSlot][this.coorIndex].sync === 'undefined'){
+                  //   this.touchTrackEvents[this.currentSlot][this.coorIndex].eventsPack.push(e);
+                  //   this.touchTrackEvents[this.currentSlot][this.coorIndex].sync = true;
                   }
                   break;
                 default:

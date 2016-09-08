@@ -338,7 +338,7 @@ angular
 
           DeviceEventHelper.handleChoppedEvent(e)
           .then(function(es) {
-            console.log(es.state);
+            console.log('state ', es.state);
             switch(es.state){
               case 'power_button_down':
                 vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
@@ -356,31 +356,32 @@ angular
                 vm.takeScreenShot({stepIndex:stepIndex});
                 break;
               case 'touch_finished':
-                console.log('touch_finished touchCoordinates', es.touchCoordinates);
-                console.log('touch_finished touchCoordinates', es.anchorTouchCoordinates);
-                vm.testCase.steps[stepIndex].touchCoordinates = es.touchCoordinates;
-                vm.testCase.steps[stepIndex].anchorTouchCoordinates = es.anchorTouchCoordinates;
-                switch(es.touchType){
-                  case 'multi-touch':
-                    vm.testCase.steps[stepIndex].name = 'Multi-Touch';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                    break;
-                  case 'swipe':
-                    vm.testCase.steps[stepIndex].name = 'Swipe';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                    break;
-                  case 'long-press':
-                    vm.testCase.steps[stepIndex].name = 'Long Press';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                    break;
-                  default:
-                    vm.testCase.steps[stepIndex].name = 'Touch';
-                    vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchCoordinates, TOUCH_WIDTH);
-                }
                 break;
               case 'none':
                 //events finished, go back to none state
-                console.log('none');
+                if(es.fromState == 'touch_finished'){
+                  console.log('touch_finished touchTrackEvents', es.touchTrackEvents);
+                  console.log('touch_finished anchorTouchTrackEvents', es.anchorTouchTrackEvents);
+                  vm.testCase.steps[stepIndex].touchTrackEvents = es.touchTrackEvents;
+                  vm.testCase.steps[stepIndex].anchorTouchTrackEvents = es.anchorTouchTrackEvents;
+                  switch(es.touchType){
+                    case 'multi-touch':
+                      vm.testCase.steps[stepIndex].name = 'Multi-Touch';
+                      vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.multiTouchDisplay(vm.device, es.touchTrackEvents, TOUCH_WIDTH);
+                      break;
+                    case 'swipe':
+                      vm.testCase.steps[stepIndex].name = 'Swipe';
+                      vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.swipeDisplay(vm.device, es.touchTrackEvents, TOUCH_WIDTH);
+                      break;
+                    case 'long-press':
+                      vm.testCase.steps[stepIndex].name = 'Long Press';
+                      vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchTrackEvents, TOUCH_WIDTH);
+                      break;
+                    default:
+                      vm.testCase.steps[stepIndex].name = 'Touch';
+                      vm.testCase.steps[stepIndex].clip = ScreenDisplayHelper.touchDisplay(vm.device, es.touchTrackEvents, TOUCH_WIDTH);
+                  }
+                }
                 if(typeof es.eventsPack !== 'undefined'){
                   vm.testCase.steps[stepIndex] = vm.testCase.steps[stepIndex] || {};
                   vm.testCase.steps[stepIndex].eventsPack = es.eventsPack;
